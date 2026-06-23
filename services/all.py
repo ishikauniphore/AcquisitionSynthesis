@@ -190,6 +190,11 @@ def start_service(req: ActivateRequest):
 def mcot_rewards(req: RewardsRequest, x_api_key: str | None = Header(default=None)):
     return service_utils.mcot(req)
 
+@app.post("/end_service", response_model=RewardsResponse)
+def end_service():
+    import os, signal
+    os.kill(os.getpid(), signal.SIGTERM)
+
 # @app.post("/confidence", response_model=RewardsResponse)
 # def conf_rewards(req: RewardsRequest, x_api_key: str | None = Header(default=None)):
 #     return service_utils.confidence(req)

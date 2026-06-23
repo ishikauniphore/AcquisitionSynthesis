@@ -251,7 +251,7 @@ def main():
     )
     parser.add_argument("--dataset_name", type=str, default="nemotron_stem",
                         help="Path to seed parquet dataset.")
-    parser.add_argument("--acquisition_model_name", type=str, default="ishikauniphore/acquisition_qwen7bins_nemotron_mcot",
+    parser.add_argument("--acquisition_model_name", type=str, default="ishikauniphore/generator_3bT-7bS-v3_nemotron_stem_mcot",
                         help="HuggingFace model name used for question generation.")
     parser.add_argument("--answer_model_name", type=str, default="Qwen/Qwen2.5-7B-Instruct",
                         help="HuggingFace model name used for answer generation. Defaults to --model_name.")

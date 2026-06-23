@@ -60,4 +60,8 @@ CUDA_VISIBLE_DEVICES=0,1,2 python3 -m verl.trainer.main_ppo \
 
 ray stop --force
 
+curl -X POST http://$SERVER_IP:5145/end_service \
+    -H "Content-Type: application/json"
+
 source run_upload_model.sh $JOB_NAME
+

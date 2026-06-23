@@ -6,13 +6,13 @@ DATASET="nemotron_stem"
 
 ### STEP 1: Acquisition training
 rm -rf /tmp/grpo_synthesis_models
-# GRPO_KWARGS="{\"model_name\": \"Qwen/Qwen2.5-7B-Instruct\", \"dataset_name\": \"/home/ubuntu/AcquisitionSynthesis/data/${DATASET}/train.parquet\"}"
-# source run_verl.sh "Qwen/Qwen2.5-3B-Instruct" "rewards/${REWARD}.py" "3bT-7bS-v3_${DATASET}_${REWARD}" "${DATASET}" "${REWARD}" "$GRPO_KWARGS"
+GRPO_KWARGS="{\"model_name\": \"Qwen/Qwen2.5-7B-Instruct\", \"dataset_name\": \"/home/ubuntu/AcquisitionSynthesis/data/${DATASET}/train.parquet\"}"
+source run_verl.sh "Qwen/Qwen2.5-3B-Instruct" "rewards/${REWARD}.py" "3bT-7bS-v3_${DATASET}_${REWARD}" "${DATASET}" "${REWARD}" "$GRPO_KWARGS"
 
-# notify "model is trained"
+notify "model is trained"
 
 
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 # STEP 2: Dataset generations
 py generating_data/data_gen_cluster.py \
     --dataset_name "${DATASET}" \
@@ -29,16 +29,7 @@ torchrun --nproc_per_node=4 sft.py \
     --file_name "/home/ubuntu/AcquisitionSynthesis/training_data/3bT-7bS-v3_${DATASET}_${REWARD}.parquet"
 py merge.py --model_path "/tmp/sft_models/3bT-7bS-v3_${DATASET}_${REWARD}"
 
-py model_inference.py \
-    --model_name "ishikauniphore/student_3bT-7bS-v3_${DATASET}_${REWARD}" \
-    --dataset "/home/ubuntu/AcquisitionSynthesis/data/nemotron_stem/test.parquet"
-py model_inference.py \
-    --model_name "ishikauniphore/student_3bT-7bS-v3_${DATASET}_${REWARD}" \
-    --dataset "/home/ubuntu/AcquisitionSynthesis/data/nemotron_chat/test.parquet"
-py model_inference.py \
-    --model_name "ishikauniphore/student_3bT-7bS-v3_${DATASET}_${REWARD}" \
-    --dataset "/home/ubuntu/AcquisitionSynthesis/data/nemotron_math/test.parquet"
-
+source run_eval.sh "ishikauniphore/student_3bT-7bS-v3_${DATASET}_${REWARD}"
 cd ..
 rm -rf ~/.cache/huggingface/hub/*ishikauniphore*
 
