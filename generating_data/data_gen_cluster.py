@@ -17,6 +17,7 @@ from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics import silhouette_score
 from sklearn.metrics.pairwise import cosine_similarity
 
+LANGUAGE_SET = ['English', 'French', 'Spanish', 'Arabic', 'Portuguese', 'Italian']
 def parse_reasoning(text):
     try:
         sample_pattern = re.compile(
@@ -97,11 +98,8 @@ def generate_questions(model_name, dataset_name, size):
 def apply_chat_template(model_name, prompts):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     mcot_instruction = lambda question: (
-        "Answer the following question. Write each reasoning step in a different language from: English, Spanish, French, German, Arabic, Italian, or Portuguese. "
-        "Example:\n<question>A café orders 4 boxes of croissants on Monday and 7 boxes on Tuesday. Each box costs $9. How much did the café spend in total?<question>\n"
-        "<reasoning>The goal is to find the total amount spent across both days. Primero, sumamos las cajas de ambos días: 4 + 7 = 11 cajas en total. Chaque boîte coûte 9 $, donc il faut multiplier le nombre de boîtes par le prix unitaire. Quindi calcoliamo: 11 × 9 = 99. Observa que el número de piezas en cada caja no es necesario para calcular el costo total, sino solo el número de cajas y su precio. Portanto, o café gastou um total de 99 dólares.\n </reasoning>"
-        "<answer> $99. </answer>"
-        "Place all reasoning inside <reasoning> tags and your final answer in English inside <answer> tags.\n"
+        "Answer the following question in the language of the question."
+        "Place all reasoning inside <reasoning> tags and your final answer inside <answer> tags.\n"
         f"<question> {question} </question>\n"
         "<reasoning> </reasoning>\n"
         "<answer> </answer>"

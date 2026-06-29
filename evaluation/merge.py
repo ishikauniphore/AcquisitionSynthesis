@@ -4,9 +4,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_path", type=str, required=True, help="Path to the fine-tuned adapter/model")
+parser.add_argument("--base_model", type=str, required=True, help="Path to the fine-tuned adapter/model")
 args = parser.parse_args()
 
-base_model_name = "Qwen/Qwen2.5-7B-Instruct"
+base_model_name = args.base_model
 adapter_path = args.model_path
 merged_path = args.model_path
 

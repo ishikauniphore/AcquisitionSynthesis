@@ -1,37 +1,49 @@
-export CUDA_VISIBLE_DEVICES=6,7
-cd generating_data
-py baseline_synthesis_DataEnvGym.py \
-    --data "numina" \
-    --model "Qwen/Qwen2.5-7B-Instruct" \
-    --output_file "/home/ubuntu/AcquisitionSynthesis/generating_data/training_data/DataEnvGym_numina_qwen7bins.parquet"
+# cd generating_data
+# py baseline_synthesis_DataEnvGym.py \
+#     --data "nemotron_stem" \
+#     --model "Qwen/Qwen2.5-7B-Instruct" \
+#     --output_file "/home/ubuntu/AcquisitionSynthesis/training_data/DataEnvGym_nemotron_stem_qwen7bins.parquet"
+# py baseline_synthesis_DataEnvGym.py \
+#     --data "nemotron_stem" \
+#     --model "Qwen/Qwen2.5-14B-Instruct" \
+#     --output_file "/home/ubuntu/AcquisitionSynthesis/training_data/DataEnvGym_nemotron_stem_qwen14bins.parquet"
+# py baseline_synthesis_DataEnvGym.py \
+#     --data "nemotron_stem" \
+#     --model "meta-llama/Llama-3.1-8B-Instruct" \
+#     --output_file "/home/ubuntu/AcquisitionSynthesis/training_data/DataEnvGym_nemotron_stem_llama8bins.parquet"
+# cd ..
 
-py baseline_synthesis_DataEnvGym.py \
-    --data "medmcqa" \
-    --model "Qwen/Qwen2.5-7B-Instruct" \
-    --output_file "/home/ubuntu/AcquisitionSynthesis/generating_data/training_data/DataEnvGym_medmcqa_qwen7bins.parquet"
 
+
+cd /home/ubuntu/AcquisitionSynthesis/evaluation
+# torchrun --nproc_per_node=4 sft.py \
+#     --model_name "Qwen/Qwen2.5-7B-Instruct" \
+#     --file_name "/home/ubuntu/AcquisitionSynthesis/training_data/DataEnvGym_nemotron_stem_qwen7bins.parquet"
+# py merge.py --model_path "/dev/shm/sft_models/DataEnvGym_nemotron_stem_qwen7bins"
+# rm -rf /dev/shm/sft_models/DataEnvGym_nemotron_stem_qwen7bins
+
+torchrun --nproc_per_node=4 sft.py \
+    --model_name "Qwen/Qwen2.5-14B-Instruct" \
+    --file_name "/home/ubuntu/AcquisitionSynthesis/training_data/DataEnvGym_nemotron_stem_qwen14bins.parquet"
+py merge.py --model_path "/dev/shm/sft_models/DataEnvGym_nemotron_stem_qwen14bins" --base_model "Qwen/Qwen2.5-14B-Instruct"
+rm -rf /dev/shm/sft_models/DataEnvGym_nemotron_stem_qwen14bins
+
+torchrun --nproc_per_node=4 sft.py \
+    --model_name "meta-llama/Llama-3.1-8B-Instruct" \
+    --file_name "/home/ubuntu/AcquisitionSynthesis/training_data/DataEnvGym_nemotron_stem_llama8bins.parquet"
+py merge.py --model_path "/dev/shm/sft_models/DataEnvGym_nemotron_stem_llama8bins" --base_model "meta-llama/Llama-3.1-8B-Instruct"
+rm -rf /dev/shm/sft_models/DataEnvGym_nemotron_stem_llama8bins
+
+
+
+# source run_eval.sh "ishikauniphore/student_DataEnvGym_nemotron_stem_qwen7bins"
+source run_eval.sh "ishikauniphore/student_DataEnvGym_nemotron_stem_qwen14bins"
+source run_eval.sh "ishikauniphore/student_DataEnvGym_nemotron_stem_llama8bins"
 cd ..
-cd evaluation
 
-py sft.py \
-    --model_name "Qwen/Qwen2.5-7B-Instruct" \
-    --file_name "/home/ubuntu/AcquisitionSynthesis/generating_data/training_data/DataEnvGym_medmcqa_qwen7bins.parquet"
-rm -rf /tmp/sft_models/DataEnvGym_medmcqa_qwen7bins
-py model_inference.py \
-    --model_name "{HF_USERNAME}/acquisition_student_DataEnvGym_medmcqa_qwen7bins" \
-    --dataset "/home/ubuntu/AcquisitionSynthesis/data/medmcqa/test.parquet"
-py model_inference.py \
-    --model_name "{HF_USERNAME}/acquisition_student_DataEnvGym_medmcqa_qwen7bins" \
-    --dataset "/home/ubuntu/AcquisitionSynthesis/data/numina/test.parquet"
+notify "dataenv gym done"
 
 
-py sft.py \
-    --model_name "Qwen/Qwen2.5-7B-Instruct" \
-    --file_name "/home/ubuntu/AcquisitionSynthesis/generating_data/training_data/DataEnvGym_numina_qwen7bins.parquet"
-py model_inference.py \
-    --model_name "{HF_USERNAME}/acquisition_student_DataEnvGym_numina_qwen7bins" \
-    --dataset "/home/ubuntu/AcquisitionSynthesis/data/medmcqa/test.parquet"
-py model_inference.py \
-    --model_name "{HF_USERNAME}/acquisition_student_DataEnvGym_numina_qwen7bins" \
-    --dataset "/home/ubuntu/AcquisitionSynthesis/data/numina/test.parquet"
-rm -rf /tmp/sft_models/DataEnvGym_numina_qwen7bins
+# cd evaluation
+# source run_eval.sh "Qwen/Qwen2.5-14B-Instruct"
+# source run_eval.sh "meta-llama/Llama-3.1-8B-Instruct"

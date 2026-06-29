@@ -1,7 +1,7 @@
 import os
+import gc
 from vllm import LLM, SamplingParams
-import json
-import pickle
+from vllm.distributed.parallel_state import destroy_model_parallel, destroy_distributed_environment
 import csv
 import torch
 from argparse import ArgumentParser
@@ -39,7 +39,13 @@ def evaluation(model, dataset):
             "completion": outputs
         }).to_csv(CACHE_FILE, sep="|", quoting=csv.QUOTE_ALL)
 
+        destroy_model_parallel()
+        destroy_distributed_environment()
         del student_model, sampling_params
+        gc.collect()
+        torch.cuda.empty_cache()
+        for key in ['MASTER_ADDR', 'MASTER_PORT', 'RANK', 'WORLD_SIZE', 'LOCAL_RANK', 'LOCAL_WORLD_SIZE']:
+            os.environ.pop(key, None)
 
 def data_gen_policy(dataset, threshold=0.5):
     df = pd.read_csv(CACHE_FILE, sep="|", quoting=csv.QUOTE_ALL)
@@ -116,7 +122,15 @@ Output the answer to the corresponding generated question.
         pd.DataFrame.from_records(generated_dataset).to_parquet(GEN_SAMPLES_FILE)
     
     pd.DataFrame.from_records(generated_dataset).to_parquet(GEN_SAMPLES_FILE)
-        
+
+    destroy_model_parallel()
+    destroy_distributed_environment()
+    del teacher_model, sampling_params
+    gc.collect()
+    torch.cuda.empty_cache()
+    for key in ['MASTER_ADDR', 'MASTER_PORT', 'RANK', 'WORLD_SIZE', 'LOCAL_RANK', 'LOCAL_WORLD_SIZE']:
+        os.environ.pop(key, None)
+
 
 if __name__ == "__main__":
     argparser = ArgumentParser()
@@ -142,3 +156,4 @@ if __name__ == "__main__":
     # Step 3: Data Generation Engine
     GEN_SAMPLES_FILE = args.output_file
     data_gen_engine(mistakes, teacher_name=args.model, num_samples=args.size)
+    os.remove(CACHE_FILE)

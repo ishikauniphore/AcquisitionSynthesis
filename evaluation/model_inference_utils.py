@@ -14,17 +14,20 @@ from glob import glob
 
 n = 500
 
-def perform_nemotron_stem_inference(llm, sampling_params, dataset_name="/home/ubuntu/AcquisitionSynthesis/data/nemotron_stem/test.parquet"):
+def perform_nemotron_stem_inference(llm, sampling_params, dataset_name="/home/ubuntu/AcquisitionSynthesis/data/nemotron_stem/test.parquet", only_questions=False):
     grounding_seed = pd.read_parquet(dataset_name, engine='pyarrow')
     questions = list(grounding_seed.apply(lambda row: row['extra_info']['grounding_question'], axis=1))[:n]
     answers = list(grounding_seed.apply(lambda row: row['extra_info']['grounding_answer'], axis=1))[:n]
 
     prompt_template = lambda q: f"Answer the following multiple choice question. Output your reasoning in <reasoning> </reasoning> tags, and your final answer (the letter of the answer choice) in <answer> \\boxed{{}} </answer> tags.\n\n<question> {q} </question>."
     prompts = [prompt_template(q) for q in questions]
-    outputs = llm.generate(prompts, sampling_params=sampling_params)
-    outputs = [output.outputs[0].text.strip() for output in outputs]
+    outputs = []
 
-    outputs = [output.split("\\boxed{")[-1].split("}")[0].strip() for output in outputs]
+    if not only_questions:
+        outputs = llm.generate(prompts, sampling_params=sampling_params)
+        outputs = [output.outputs[0].text.strip() for output in outputs]
+
+        outputs = [output.split("\\boxed{")[-1].split("}")[0].strip() for output in outputs]
     answers = [answer.split("\\boxed{")[-1].split("}")[0].strip() for answer in answers]
     
     return [{
@@ -35,17 +38,20 @@ def perform_nemotron_stem_inference(llm, sampling_params, dataset_name="/home/ub
         "outputs": outputs
     }]
 
-def perform_nemotron_math_inference(llm, sampling_params, dataset_name="/home/ubuntu/AcquisitionSynthesis/data/nemotron_math/test.parquet"):
+def perform_nemotron_math_inference(llm, sampling_params, dataset_name="/home/ubuntu/AcquisitionSynthesis/data/nemotron_math/test.parquet", only_questions=False):
     grounding_seed = pd.read_parquet(dataset_name, engine='pyarrow')
     questions = list(grounding_seed.apply(lambda row: row['extra_info']['grounding_question'], axis=1))[:n]
     answers = list(grounding_seed.apply(lambda row: row['extra_info']['grounding_answer'], axis=1))[:n]
 
     prompt_template = lambda q: f"Answer the following question. Output your reasoning in <reasoning> </reasoning> tags, and your final answer in <answer> \\boxed{{}} </answer> tags.\n\n<question> {q} </question>."
     prompts = [prompt_template(q) for q in questions]
-    outputs = llm.generate(prompts[:n], sampling_params=sampling_params)
-    outputs = [output.outputs[0].text.strip() for output in outputs]
+    outputs = []
 
-    outputs = [output.split("\\boxed{")[-1].split("}")[0].strip() for output in outputs]
+    if not only_questions:
+        outputs = llm.generate(prompts[:n], sampling_params=sampling_params)
+        outputs = [output.outputs[0].text.strip() for output in outputs]
+
+        outputs = [output.split("\\boxed{")[-1].split("}")[0].strip() for output in outputs]
     answers = [answer.split("\\boxed{")[-1].split("}")[0].strip() for answer in answers]
     
     return [{
@@ -56,17 +62,20 @@ def perform_nemotron_math_inference(llm, sampling_params, dataset_name="/home/ub
         "outputs": outputs
     }]
 
-def perform_nemotron_chat_inference(llm, sampling_params, dataset_name="/home/ubuntu/AcquisitionSynthesis/data/nemotron_chat/test.parquet"):
+def perform_nemotron_chat_inference(llm, sampling_params, dataset_name="/home/ubuntu/AcquisitionSynthesis/data/nemotron_chat/test.parquet", only_questions=False):
     grounding_seed = pd.read_parquet(dataset_name, engine='pyarrow')
     questions = list(grounding_seed.apply(lambda row: row['extra_info']['grounding_question'], axis=1))[:n]
     answers = list(grounding_seed.apply(lambda row: row['extra_info']['grounding_answer'], axis=1))[:n]
 
     prompt_template = lambda q: f"Answer the following question. Output your reasoning in <reasoning> </reasoning> tags, and your final answer in <answer> </answer> tags.\n\n<question> {q} </question>."
     prompts = [prompt_template(q) for q in questions]
-    outputs = llm.generate(prompts[:n], sampling_params=sampling_params)
-    outputs = [output.outputs[0].text.strip() for output in outputs]
+    outputs = []
 
-    outputs = [output.split("<answer>")[-1].split("</answer>")[0].strip() for output in outputs]
+    if not only_questions:
+        outputs = llm.generate(prompts[:n], sampling_params=sampling_params)
+        outputs = [output.outputs[0].text.strip() for output in outputs]
+
+        outputs = [output.split("<answer>")[-1].split("</answer>")[0].strip() for output in outputs]
     
     return [{
         "experiment_name": "nemotron_chat",
@@ -76,7 +85,7 @@ def perform_nemotron_chat_inference(llm, sampling_params, dataset_name="/home/ub
         "outputs": outputs
     }]
 
-def perform_mhotpot_inference(llm, sampling_params, data_dir="/home/ubuntu/lsk_mitigate/data/m_hotpotqa"):
+def perform_mhotpot_inference(llm, sampling_params, data_dir="/home/ubuntu/lsk_mitigate/data/m_hotpotqa", only_questions=False):
     csv_files = sorted(glob(os.path.join(data_dir, "*.csv")))
     experiments = []
     for csv_file in csv_files:
@@ -86,16 +95,20 @@ def perform_mhotpot_inference(llm, sampling_params, data_dir="/home/ubuntu/lsk_m
 
         prompt_template = lambda c, q: f"Given some context, the task is the answer the question. Output your reasoning in <reasoning> </reasoning> tags, and your final answer in <answer> </answer> tags.\n\n<context> {c} </context>\n<question> {q} </question>."
         prompts = [prompt_template(c, q) for c, q in zip(contexts, queries)]
-        outputs = llm.generate(prompts, sampling_params=sampling_params)
-        outputs = [output.outputs[0].text.strip() for output in outputs]
-    
-        outputs = [output.split("<answer>")[-1].split("</answer>")[0].strip() for output in outputs]
+        outputs = []
+
+        if not only_questions:
+            outputs = llm.generate(prompts, sampling_params=sampling_params)
+            outputs = [output.outputs[0].text.strip() for output in outputs]
+        
+            outputs = [output.split("<answer>")[-1].split("</answer>")[0].strip() for output in outputs]
         questions = [f"Context: {c}\nQuestion: {q}" for c, q in zip(queries, contexts)]
 
         experiments.append({
             "experiment_name": f"mhotpot_{csv_file.split('/')[-1].split('.')[0]}",
             "task": "open-ended",
             "questions": questions,
+            "contexts": contexts,
             "answers": df['output'],
             "outputs": outputs
         })
@@ -103,7 +116,7 @@ def perform_mhotpot_inference(llm, sampling_params, data_dir="/home/ubuntu/lsk_m
     return experiments
 
 
-def perform_mmmlu_inference(llm, sampling_params, data_dir="/home/ubuntu/AcquisitionSynthesis/data/mmmlu"):
+def perform_mmmlu_inference(llm, sampling_params, data_dir="/home/ubuntu/AcquisitionSynthesis/data/mmmlu", only_questions=False):
     csv_files = sorted(glob(os.path.join(data_dir, "*.csv")))
     experiments = []
     for csv_file in csv_files:
@@ -112,10 +125,13 @@ def perform_mmmlu_inference(llm, sampling_params, data_dir="/home/ubuntu/Acquisi
 
         prompt_template = lambda q: f"Answer the following multiple choice question. Output your reasoning in <reasoning> </reasoning> tags, and your final answer (the letter of the answer choice) in <answer> \\boxed{{}} </answer> tags.\n\n<question> {q} </question>."
         prompts = [prompt_template(q) for q in questions]
-        outputs = llm.generate(prompts, sampling_params=sampling_params)
-        outputs = [output.outputs[0].text.strip() for output in outputs]
-    
-        outputs = [output.split("\\boxed{")[-1].split("}")[0].strip() for output in outputs]
+        outputs = []
+
+        if not only_questions:
+            outputs = llm.generate(prompts, sampling_params=sampling_params)
+            outputs = [output.outputs[0].text.strip() for output in outputs]
+        
+            outputs = [output.split("\\boxed{")[-1].split("}")[0].strip() for output in outputs]
 
         experiments.append({
             "experiment_name": f"mmmlu_{csv_file.split('/')[-1].split('.')[0]}",
@@ -127,7 +143,7 @@ def perform_mmmlu_inference(llm, sampling_params, data_dir="/home/ubuntu/Acquisi
 
     return experiments
 
-def perform_opus_inference(llm, sampling_params, data_dir="/home/ubuntu/AcquisitionSynthesis/data/opus-100"):
+def perform_opus_inference(llm, sampling_params, data_dir="/home/ubuntu/AcquisitionSynthesis/data/opus-100", only_questions=False):
     csv_files = sorted(glob(os.path.join(data_dir, "*.csv")))
     experiments = []
     for csv_file in csv_files:
@@ -136,10 +152,13 @@ def perform_opus_inference(llm, sampling_params, data_dir="/home/ubuntu/Acquisit
 
         prompt_template = lambda q: f"Answer the question and output your final answer in <answer> </answer> tags.\n<question> {q} </question>."
         prompts = [prompt_template(q) for q in questions]
-        outputs = llm.generate(prompts, sampling_params=sampling_params)
-        outputs = [output.outputs[0].text.strip() for output in outputs]
-    
-        outputs = [output.split("<answer>")[-1].split("</answer>")[0].strip() for output in outputs]
+        outputs = []
+
+        if not only_questions:
+            outputs = llm.generate(prompts, sampling_params=sampling_params)
+            outputs = [output.outputs[0].text.strip() for output in outputs]
+        
+            outputs = [output.split("<answer>")[-1].split("</answer>")[0].strip() for output in outputs]
 
         experiments.append({
             "experiment_name": f"opus_{csv_file.split('/')[-1].split('.')[0]}",

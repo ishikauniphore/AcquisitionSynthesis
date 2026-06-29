@@ -16,12 +16,12 @@ def format_prompt(example, tokenizer):
     return {"text": tokenizer.apply_chat_template(messages, tokenize=False)}
 
 
-def sft_train(file_name, model_name, num_epochs=5, output_dir="/tmp/sft_models/", student_name=None):
+def sft_train(file_name, model_name, num_epochs=5, output_dir="/dev/shm/sft_models/", student_name=None, n=1000):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    df = pd.read_parquet(file_name)[:1000]
+    df = pd.read_parquet(file_name)[:n]
     assert "question" in df.columns and "answer" in df.columns and "reasoning" in df.columns, \
         "CSV must have 'question' and 'answer' columns"
 
@@ -91,9 +91,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--file_name", help="Path to CSV file with 'question' and 'answer' columns", default="/home/ubuntu/AcquisitionSynthesis/generating_data/ins_train/random_OpenR1-Math-220k_1000.parquet")
     parser.add_argument("--model_name",  default="Qwen/Qwen2.5-3b-Instruct")
-    parser.add_argument("--output_dir", default="/tmp/sft_models/", help="Directory to save trained model")
+    parser.add_argument("--output_dir", default="/dev/shm/sft_models/", help="Directory to save trained model")
     parser.add_argument("--num_epochs", type=int, default=5)
     parser.add_argument("--student_name", type=str, default=None)
+    parser.add_argument("--n", type=int, default=1000)
     args = parser.parse_args()
 
-    model_path = sft_train(args.file_name, args.model_name, args.num_epochs, args.output_dir, args.student_name)
+    model_path = sft_train(args.file_name, args.model_name, args.num_epochs, args.output_dir, args.student_name, args.n)

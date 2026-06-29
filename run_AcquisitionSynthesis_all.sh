@@ -5,7 +5,7 @@ DATASETS=("nemotron_stem" "nemotron_math" "nemotron_chat")
 
 for DATASET in "${DATASETS[@]}"; do
     ### STEP 1: Acquisition training
-    rm -rf /tmp/grpo_synthesis_models
+    rm -rf /dev/shm/grpo_synthesis_models
     GRPO_KWARGS="{\"model_name\": \"Qwen/Qwen2.5-7B-Instruct\", \"dataset_name\": \"/home/ubuntu/AcquisitionSynthesis/data/${DATASET}/train.parquet\"}"
     source run_verl.sh "Qwen/Qwen2.5-3B-Instruct" "rewards/${REWARD}.py" "3bT-7bS_${DATASET}_${REWARD}" "${DATASET}" "${REWARD}" "$GRPO_KWARGS"
 done
@@ -23,20 +23,20 @@ for DATASET in "${DATASETS[@]}"; do
 
     ### STEP 3: Student evaluation
     cd evaluation
-    rm -rf /tmp/sft_models/
+    rm -rf /dev/shm/sft_models/
     torchrun --nproc_per_node=4 sft.py \
         --model_name "Qwen/Qwen2.5-7B-Instruct" \
         --file_name "/home/ubuntu/AcquisitionSynthesis/training_data/3bT-7bS_${DATASET}_${REWARD}.parquet"
-    py merge.py --model_path "/tmp/sft_models/3bT-7bS_${DATASET}_${REWARD}"
+    py merge.py --model_path "/dev/shm/sft_models/3bT-7bS_${DATASET}_${REWARD}"
 
     py model_inference.py \
-        --model_name "/tmp/sft_models/3bT-7bS_${DATASET}_${REWARD}" \
+        --model_name "/dev/shm/sft_models/3bT-7bS_${DATASET}_${REWARD}" \
         --dataset "/home/ubuntu/AcquisitionSynthesis/data/nemotron_chat/test.parquet"
     py model_inference.py \
-        --model_name "/tmp/sft_models/3bT-7bS_${DATASET}_${REWARD}" \
+        --model_name "/dev/shm/sft_models/3bT-7bS_${DATASET}_${REWARD}" \
         --dataset "/home/ubuntu/AcquisitionSynthesis/data/nemotron_stem/test.parquet"
     py model_inference.py \
-        --model_name "/tmp/sft_models/3bT-7bS_${DATASET}_${REWARD}" \
+        --model_name "/dev/shm/sft_models/3bT-7bS_${DATASET}_${REWARD}" \
         --dataset "/home/ubuntu/AcquisitionSynthesis/data/nemotron_math/test.parquet"
 
     cd ..

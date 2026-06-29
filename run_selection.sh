@@ -31,7 +31,7 @@ py sft.py \
 py model_inference.py \
     --model_name "{HF_USERNAME}/acquisition_student_random_numina" \
     --dataset "/home/ubuntu/AcquisitionSynthesis/data/numina/test.parquet"
-rm -rf /tmp/sft_models/random_numina
+rm -rf /dev/shm/sft_models/random_numina
 
 py sft.py \
     --model_name "Qwen/Qwen2.5-7B-Instruct" \
@@ -39,7 +39,7 @@ py sft.py \
 py model_inference.py \
     --model_name "{HF_USERNAME}/acquisition_student_random_medmcqa" \
     --dataset "/home/ubuntu/AcquisitionSynthesis/data/medmcqa/test.parquet"
-rm -rf /tmp/sft_models/random_medmcqa
+rm -rf /dev/shm/sft_models/random_medmcqa
 
 cd ..
 
@@ -87,7 +87,7 @@ cd evaluation
 py sft.py \
     --model_name "Qwen/Qwen2.5-7B-Instruct" \
     --file_name "/home/ubuntu/AcquisitionSynthesis/generating_data/training_data/filtered_qwen7bins_numina.parquet"
-rm -rf /tmp/sft_models/filtered_qwen7bins_numina
+rm -rf /dev/shm/sft_models/filtered_qwen7bins_numina
 py model_inference.py \
     --model_name "{HF_USERNAME}/acquisition_student_filtered_qwen7bins_numina" \
     --dataset "/home/ubuntu/AcquisitionSynthesis/data/numina/test.parquet"
@@ -97,7 +97,7 @@ py model_inference.py \
 py sft.py \
     --model_name "Qwen/Qwen2.5-7B-Instruct" \
     --file_name "/home/ubuntu/AcquisitionSynthesis/generating_data/training_data/filtered_qwen7bins_medmcqa.parquet"
-rm -rf /tmp/sft_models/filtered_qwen7bins_medmcqa
+rm -rf /dev/shm/sft_models/filtered_qwen7bins_medmcqa
 py model_inference.py \
     --model_name "{HF_USERNAME}/acquisition_student_filtered_qwen7bins_medmcqa" \
     --dataset "/home/ubuntu/AcquisitionSynthesis/data/medmcqa/test.parquet"

@@ -22,6 +22,8 @@ from prompt_variations import *
 import datasets
 from verl.utils.hdfs_io import copy, makedirs
 
+LANGUAGE_SET = ['English', 'French', 'Spanish', 'Arabic', 'Portuguese', 'Italian']
+
 def extract_last_boxed(s):
     try:
         temp = s.split("boxed")[-1]
@@ -37,7 +39,7 @@ if __name__ == "__main__":
     parser.add_argument("--hdfs_dir", default=None)
     parser.add_argument("--local_dataset_path", default=None, help="The local path to the raw dataset, if it exists.")
     parser.add_argument(
-        "--local_save_dir", default="/home/ubuntu/AcquisitionSynthesis/data/nemotron_chat/", help="The save directory for the preprocessed dataset."
+        "--local_save_dir", default="/home/ubuntu/AcquisitionSynthesis/data/nemotron_math/", help="The save directory for the preprocessed dataset."
     )
     parser.add_argument("--train_size", type=int, default=500)
     parser.add_argument("--prompt", type=str, default="current")
@@ -99,7 +101,7 @@ if __name__ == "__main__":
                 "data_source": data_source + "_" + args.prompt,
                 "prompt": [{
                     "role": "user",
-                    "content": final_prompt_template(q, r, a)
+                    "content": final_prompt_template(q, r, a, LANGUAGE_SET[i % len(LANGUAGE_SET)])
                 }],
                 "ability": "data_synthesis",
                 "reward_model": {"style": "rule", "ground_truth": ""},
@@ -110,6 +112,7 @@ if __name__ == "__main__":
                         "grounding_question": q,
                         "grounding_answer": a,
                         "grounding_reasoning": r,
+                        "grounding_language": LANGUAGE_SET[i % len(LANGUAGE_SET)]
                 }
             })
 
@@ -142,7 +145,7 @@ if __name__ == "__main__":
         q = example.get('query', '').strip().replace("\n", " ")
         a = example.get('response', '').strip().replace("\n", " ")
         r = example.get('reasoning', '').strip().replace("\n", " ")
-        content = MATH_PROMPT(q, a, r)
+        content = MATH_PROMPT(q, a, r, "English")
         return len(content) // 2 < MAX_TOKENS
 
     filtered = final_full_dataset.filter(is_short_enough)

@@ -80,7 +80,7 @@ def evaluate_outputs(predictions, references):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--model_name", default="/tmp/sft_models/random_OpenR1-Math-220k_100")
+    parser.add_argument("--model_name", default="/dev/shm/sft_models/random_OpenR1-Math-220k_100")
     parser.add_argument("--train_dataset_name", default=None)
     parser.add_argument("--test_dataset_name", default="/home/ubuntu/AcquisitionSynthesis/data/numina/test.parquet")
     parser.add_argument("--use_chat_template", action="store_true",
