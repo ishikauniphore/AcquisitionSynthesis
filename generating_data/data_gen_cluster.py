@@ -99,7 +99,7 @@ def apply_chat_template(model_name, prompts):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     mcot_instruction = lambda question: (
         "Answer the following question in the language of the question."
-        "Place all reasoning inside <reasoning> tags and your final answer inside <answer> tags.\n"
+        "Place all reasoning inside <reasoning> tags (in the language of the question) and your final answer inside <answer> tags.\n"
         f"<question> {question} </question>\n"
         "<reasoning> </reasoning>\n"
         "<answer> </answer>"
@@ -128,7 +128,7 @@ def generate_k_responses(
     llm = LLM(
         model=model_name,
         tensor_parallel_size=torch.cuda.device_count(),
-        gpu_memory_utilization=0.9,
+        gpu_memory_utilization=0.7,
     )
     sp = SamplingParams(n=k, temperature=temperature, max_tokens=max_tokens, seed=seed)
 
@@ -286,6 +286,8 @@ def main():
     else:
         print(f"=== Step 1: Parsing questions from {args.questions_file} ===")
         questions = pd.read_parquet(args.questions_file, engine='pyarrow')['question']
+    
+    pd.DataFrame({"question": questions}).to_parquet('training_data/questions.parquet', engine='pyarrow')
 
     print("=== Step 2: Generating answers ===")
     answers, reasonings = generate_answers(

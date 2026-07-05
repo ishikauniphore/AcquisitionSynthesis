@@ -22,7 +22,7 @@ from prompt_variations import *
 import datasets
 from verl.utils.hdfs_io import copy, makedirs
 
-LANGUAGE_SET = ['English', 'French', 'Spanish', 'Arabic', 'Portuguese', 'Italian']
+LANGUAGE_SET = ['French', 'Spanish', 'Arabic', 'Portuguese', 'Italian']
 
 def extract_last_boxed(s):
     try:
@@ -39,9 +39,9 @@ if __name__ == "__main__":
     parser.add_argument("--hdfs_dir", default=None)
     parser.add_argument("--local_dataset_path", default=None, help="The local path to the raw dataset, if it exists.")
     parser.add_argument(
-        "--local_save_dir", default="/home/ubuntu/AcquisitionSynthesis/data/nemotron_math/", help="The save directory for the preprocessed dataset."
+        "--local_save_dir", default="/home/ubuntu/AcquisitionSynthesis/data/nemotron_chat/", help="The save directory for the preprocessed dataset."
     )
-    parser.add_argument("--train_size", type=int, default=500)
+    parser.add_argument("--train_size", type=int, default=20000)
     parser.add_argument("--prompt", type=str, default="current")
 
     args = parser.parse_args()
@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
     if "stem" in args.local_save_dir:
         stem = full_dataset['stem']
-        stem = stem.select(np.arange(0,10000))
+        stem = stem.select(np.arange(0,30000))
         stem = stem.rename_column("reasoning", "is_reasoning_on")
         stem = stem.map(lambda x: {'query': x['messages'][1]['content']})
         stem = stem.map(lambda x: {'reasoning': x['messages'][2]['content'].split("\n\n\\boxed")[0].strip()})
@@ -62,7 +62,7 @@ if __name__ == "__main__":
 
     elif "math" in args.local_save_dir:
         math = full_dataset['math']
-        math = math.select(np.arange(0,10000))
+        math = math.select(np.arange(0, 30000))
         math = math.rename_column("reasoning", "is_reasoning_on")
         math = math.map(lambda x: {'query': x['messages'][1]['content']})
         math = math.map(lambda x: {'reasoning': x['messages'][2]['content'].split("\n\n\\boxed")[0].strip()})
@@ -72,7 +72,7 @@ if __name__ == "__main__":
 
     elif "chat" in args.local_save_dir:
         chat = full_dataset['chat']
-        chat = chat.select(np.arange(210000, 220000))
+        chat = chat.select(np.arange(210000, 270000))
         chat = chat.filter(lambda x: "on" in x['reasoning'])
         chat = chat.rename_column("reasoning", "is_reasoning_on")
         chat = chat.map(lambda x: {'query': x['messages'][1]['content']})
@@ -155,6 +155,7 @@ if __name__ == "__main__":
     )
 
     train_dataset = create_dataset(filtered.select(range(TRAIN_SIZE)), "train")
+    LANGUAGE_SET.append("English")
     valid_dataset = create_dataset(filtered.select(range(TRAIN_SIZE, TRAIN_SIZE + VALID_SIZE)), "valid")
     test_dataset = create_dataset(filtered.select(range(len(filtered)-TEST_SIZE-1, len(filtered))), "test")
     # all_dataset = create_dataset(filtered.select(range(0, len(filtered)-TEST_SIZE)), "all").select(range(0, 10000))
@@ -166,9 +167,9 @@ if __name__ == "__main__":
     else:
         local_save_dir = args.local_save_dir
 
-    train_dataset.to_parquet(os.path.join(local_save_dir, "train.parquet"))
+    # train_dataset.to_parquet(os.path.join(local_save_dir, "train.parquet"))
     valid_dataset.to_parquet(os.path.join(local_save_dir, "valid.parquet"))
-    test_dataset.to_parquet(os.path.join(local_save_dir, "test.parquet"))
+    # test_dataset.to_parquet(os.path.join(local_save_dir, "test.parquet"))
     # all_dataset.to_parquet(os.path.join(local_save_dir, "all.parquet"))
 
     # records = create_dataset_jsonl(filtered.select(range(TRAIN_SIZE)), "train")

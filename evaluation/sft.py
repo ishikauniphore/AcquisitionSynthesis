@@ -28,7 +28,10 @@ def sft_train(file_name, model_name, num_epochs=5, output_dir="/dev/shm/sft_mode
     dataset = Dataset.from_pandas(df[["question", "answer", "reasoning"]].dropna())
     dataset = dataset.map(lambda ex: format_prompt(ex, tokenizer))
 
-    run_name = file_name.split('/')[-1].split('.')[0]
+    if student_name is None:
+        run_name = file_name.split('/')[-1].split('.')[0]
+    else: 
+        run_name = student_name
     save_path = os.path.join(output_dir, run_name)
     os.makedirs(save_path, exist_ok=True)
 
@@ -94,7 +97,7 @@ if __name__ == "__main__":
     parser.add_argument("--output_dir", default="/dev/shm/sft_models/", help="Directory to save trained model")
     parser.add_argument("--num_epochs", type=int, default=5)
     parser.add_argument("--student_name", type=str, default=None)
-    parser.add_argument("--n", type=int, default=1000)
+    parser.add_argument("--num_data", type=int, default=1000)
     args = parser.parse_args()
 
-    model_path = sft_train(args.file_name, args.model_name, args.num_epochs, args.output_dir, args.student_name, args.n)
+    model_path = sft_train(args.file_name, args.model_name, args.num_epochs, args.output_dir, args.student_name, args.num_data)

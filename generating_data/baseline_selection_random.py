@@ -10,15 +10,16 @@ def filter(train_data: pd.DataFrame, size):
 
 if __name__ == "__main__":
     argparser = ArgumentParser()
-    argparser.add_argument("--data", type=str, default="numina")
+    argparser.add_argument("--data", type=str, default="nemotron_stem")
     argparser.add_argument("--size", type=int, default=1000)
+    argparser.add_argument("--file", type=str, default="selection.parquet")
     args = argparser.parse_args()
 
-    train_data = load_data(f"/home/ubuntu/AcquisitionSynthesis/data/{args.data}/all.parquet")
+    train_data = load_data(f"/home/ubuntu/AcquisitionSynthesis/data/{args.data}/valid.parquet")
 
     filtered = filter(train_data, args.size)
 
-    file_name = os.path.join(TRAINING_DATA_DIR, f"random_{args.data}_{str(args.size)}.parquet")
+    file_name = args.file
     
     def format(col):
         filtered[col] = filtered[col].apply(lambda x: x.replace("\n", ""))
