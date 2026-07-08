@@ -5,12 +5,25 @@ import pandas as pd
 from datasets import Dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, BitsAndBytesConfig
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-from trl import SFTTrainer
+from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 import torch
 
-def format_prompt(example, tokenizer):
+def get_prompt_template(data_name):
+    """Must match the eval prompts in evaluation/model_inference_utils.py exactly,
+    so the model sees the same instruction phrasing at train and eval time."""
+    if "stem" in data_name:
+        return lambda q: f"Answer the following multiple choice question. Output your reasoning in <reasoning> </reasoning> tags, and your final answer (the letter of the answer choice) in <answer> \\boxed{{}} </answer> tags.\n\n<question> {q} </question>."
+    elif "math" in data_name:
+        return lambda q: f"Answer the following question. Output your reasoning in <reasoning> </reasoning> tags, and your final answer in <answer> \\boxed{{}} </answer> tags.\n\n<question> {q} </question>."
+    elif "chat" in data_name:
+        return lambda q: f"Answer the following question. Output your reasoning in <reasoning> </reasoning> tags, and your final answer in <answer> </answer> tags.\n\n<question> {q} </question>."
+    else:
+        raise ValueError(f"Unknown data name: {data_name}")
+
+
+def format_prompt(example, tokenizer, prompt_template):
     messages = [
-        {"role": "user", "content": f"Answer the following question. Output your answer in <reasoning> </reasoning> and <answer> </answer> tags.\n<question> {example['question']} </question>"},
+        {"role": "user", "content": prompt_template(example['question'])},
         {"role": "assistant", "content": f"<reasoning> {example['reasoning']} </reasoning>\n<answer> {example['answer']} </answer>"},
     ]
     return {"text": tokenizer.apply_chat_template(messages, tokenize=False)}
@@ -25,8 +38,9 @@ def sft_train(file_name, model_name, num_epochs=5, output_dir="/dev/shm/sft_mode
     assert "question" in df.columns and "answer" in df.columns and "reasoning" in df.columns, \
         "CSV must have 'question' and 'answer' columns"
 
+    prompt_template = get_prompt_template(file_name)
     dataset = Dataset.from_pandas(df[["question", "answer", "reasoning"]].dropna())
-    dataset = dataset.map(lambda ex: format_prompt(ex, tokenizer))
+    dataset = dataset.map(lambda ex: format_prompt(ex, tokenizer, prompt_template))
 
     if student_name is None:
         run_name = file_name.split('/')[-1].split('.')[0]
@@ -40,7 +54,7 @@ def sft_train(file_name, model_name, num_epochs=5, output_dir="/dev/shm/sft_mode
         num_train_epochs=num_epochs,
         per_device_train_batch_size=1,
         gradient_accumulation_steps=16,
-        learning_rate=2e-5,
+        learning_rate=2e-4,
         warmup_ratio=0.05,
         lr_scheduler_type="cosine",
         logging_steps=10,
@@ -74,13 +88,19 @@ def sft_train(file_name, model_name, num_epochs=5, output_dir="/dev/shm/sft_mode
     )
     model = get_peft_model(model, lora_config)
 
+    collator = DataCollatorForCompletionOnlyLM(
+        response_template="<|im_start|>assistant\n",
+        tokenizer=tokenizer,
+    )
+
     trainer = SFTTrainer(
         model=model,
         args=sft_config,
         train_dataset=dataset,
         tokenizer=tokenizer,
+        data_collator=collator,
         dataset_text_field="text",
-        max_seq_length=1024,
+        max_seq_length=4096,
     )
 
     trainer.train()

@@ -14,6 +14,33 @@ from glob import glob
 
 n = 500
 
+def perform_cheating(llm, sampling_params, dataset_name="/home/ubuntu/AcquisitionSynthesis/training_data/selected_nemotron_stem_5k.parquet", english_reasoning="off", only_questions=False):
+    grounding_seed = pd.read_parquet(dataset_name, engine='pyarrow')
+    questions = list(grounding_seed['question'])[:n]
+    answers = list(grounding_seed['answer'])[:n]
+
+    if english_reasoning == "on":
+        prompt_template = lambda q: f"Answer the following multiple choice question. Output your reasoning in ENGLISH in the <reasoning> </reasoning> tags, and your final answer (the letter of the answer choice) in <answer> \\boxed{{}} </answer> tags.\n\n<question> {q} </question>."
+    else:
+        prompt_template = lambda q: f"Answer the following multiple choice question. Output your reasoning in <reasoning> </reasoning> tags, and your final answer (the letter of the answer choice) in <answer> \\boxed{{}} </answer> tags.\n\n<question> {q} </question>."
+    prompts = [prompt_template(q) for q in questions]
+    outputs = []
+
+    if not only_questions:
+        outputs = llm.generate(prompts, sampling_params=sampling_params)
+        outputs = [output.outputs[0].text.strip() for output in outputs]
+
+        outputs = [output.split("\\boxed{")[-1].split("}")[0].strip() for output in outputs]
+    answers = [answer.split("\\boxed{")[-1].split("}")[0].strip() for answer in answers]
+    
+    return [{
+        "experiment_name": "cheating" if english_reasoning == "off" else "nemotron_stem_english_reasoning",
+        "task": "classification",
+        "questions": questions,
+        "answers": answers,
+        "outputs": outputs
+    }]
+
 def perform_nemotron_stem_inference(llm, sampling_params, dataset_name="/home/ubuntu/AcquisitionSynthesis/data/nemotron_stem/test.parquet", english_reasoning="off", only_questions=False):
     grounding_seed = pd.read_parquet(dataset_name, engine='pyarrow')
     questions = list(grounding_seed.apply(lambda row: row['extra_info']['grounding_question'], axis=1))[:n]
