@@ -1,16 +1,13 @@
 import sys
 sys.path.append('/home/ubuntu/AcquisitionSynthesis/rewards/')
 from format import parse
-from repeat_penalty import compute_repeat_penalty
 import requests
-import numpy as np
-
+import torch
 import os
 SERVER_IP = os.environ['SERVER_IP']
 
-def compute_gradient(data):
-    SERVER_A = f"http://{SERVER_IP}:5145/gradient"
-
+def compute_answerdiff(data):
+    SERVER_A = f"http://{SERVER_IP}:5145/answerdiff"
     payload = {
         "data": data,
     }
@@ -20,7 +17,7 @@ def compute_gradient(data):
             SERVER_A,
             json=payload,
             headers={"X-API-Key": ""},
-            timeout=300,
+            timeout=600,
         )
         if r.ok: break
     if not r.ok: return float(0.0)
@@ -28,13 +25,15 @@ def compute_gradient(data):
     print("body:", r.text)
     r.raise_for_status()
 
-    gradient_mag = r.json()["acquisition_reward"]
-
-    return gradient_mag
+    if r.json()["acquisition_reward"] is not None:
+        answerdiff_reward = min(max(r.json()["acquisition_reward"], 0.0), 1.0)
+    else:
+        return float(0.0)
+    return answerdiff_reward
 
 def compute_score(data_source, solution_str, ground_truth, extra_info=None):
     data, xml_reward = parse(solution_str)
     if data is None: return float(0.0)
 
-    gradient_mag = compute_gradient(data)
-    return gradient_mag + xml_reward
+    answerdiff_reward = compute_answerdiff(data)
+    return answerdiff_reward + xml_reward

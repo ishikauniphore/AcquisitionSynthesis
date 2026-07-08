@@ -11,3 +11,5 @@ key.txt
 *.csv
 *.parquet
 *.pkl
+evaluation/results.txt
+test.ipynb

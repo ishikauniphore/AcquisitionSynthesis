@@ -6,6 +6,7 @@ import queue
 import uuid
 import torch
 from pydantic import BaseModel
+import torch.nn.functional as F
 
 class RewardsResponse(BaseModel):
     acquisition_reward: float
@@ -60,15 +61,35 @@ class WorkerQueue:
 
 
 # --- module-level queues (one per service) ---
-_mcot_queue: WorkerQueue | None = None
-# _confidence_queue: WorkerQueue | None = None
-# _gradient_queue: WorkerQueue | None = None
-# _proximity_queue: WorkerQueue | None = None
-# _diversity_queue: WorkerQueue | None = None
-# _answer_variance_queue: WorkerQueue | None = None
+_confidence_queue: WorkerQueue | None = None
+_answerdiff_queue: WorkerQueue | None = None
+_semreasoning_queue: WorkerQueue | None = None
+_hlrep_queue: WorkerQueue | None = None
 
 
 # --- pure compute functions ---
+def calculate_answer_confidence(outputs):
+    confidence = []
+    for output in outputs:
+        logprobs = output.outputs[0].logprobs
+        ind = 0
+        for i in range(len(logprobs)):
+            if "answer" in logprobs[i][list(logprobs[i].keys())[0]].decoded_token:
+                ind = i
+                break
+        top1, top2 = [], []
+        for lp in logprobs[ind:]:
+            keys = list(lp.keys())
+            if len(keys) >= 2:
+                top1.append(lp[keys[0]].logprob)
+                top2.append(lp[keys[1]].logprob)
+        if not top1:
+            confidence.append(-5.0)
+            continue
+        avg_diff = (torch.exp(torch.tensor(top1)) - torch.exp(torch.tensor(top2))).mean()
+        confidence.append(float(1.0 / avg_diff))
+    return confidence
+
 def calculate_confidence(outputs):
     confidence = []
     for output in outputs:
@@ -86,21 +107,17 @@ def calculate_confidence(outputs):
         confidence.append(float(1.0 / avg_diff))
     return confidence
 
-def _compute_mcot(reqs, language_model, sampling_params):
+def inference(reqs, language_model, sampling_params):
     questions = [req.data['question'] for req in reqs]
     answers = [req.data['answer'] for req in reqs]
     english_only_instruction = lambda question: (
-        "Answer the following question. Reason step-by-step in English inside <reasoning> tags, then give your final answer inside <answer> tags.\n"
+        "Answer the following question. Reason step-by-step in English inside <reasoning> tags, then output your final answer inside <answer> tags.\n"
         f"<question>\n{question}\n</question>\n"
         "<reasoning>\n\n</reasoning>\n"
         "<answer>\n\n</answer>"
     )
     mcot_instruction = lambda question: (
-        "Answer the following question. Write each reasoning step in a different language from: English, Spanish, French, Italian, or Portuguese. "
-        "Example:\n<question>A café orders 4 boxes of croissants on Monday and 7 boxes on Tuesday. Each box costs $9. How much did the café spend in total?<question>\n"
-        "<reasoning>The goal is to find the total amount spent across both days. Primero, sumamos las cajas de ambos días: 4 + 7 = 11 cajas en total. Chaque boîte coûte 9 $, donc il faut multiplier le nombre de boîtes par le prix unitaire. Quindi calcoliamo: 11 × 9 = 99. Observa que el número de piezas en cada caja no es necesario para calcular el costo total, sino solo el número de cajas y su precio. Portanto, o café gastou um total de 99 dólares.\n </reasoning>"
-        "<answer> $99. </answer>"
-        "Place all reasoning inside <reasoning> tags and your final answer in English inside <answer> tags.\n"
+        "Answer the following question. Reason step-by-step in the language of the question inside <reasoning> tags, then output your final answer inside <answer> tags."
         f"<question> {question} </question>\n"
         "<reasoning> </reasoning>\n"
         "<answer> </answer>"
@@ -114,209 +131,173 @@ def _compute_mcot(reqs, language_model, sampling_params):
     mcot_outputs = language_model.generate(mcot_prompts, sampling_params=sampling_params)
     mcot_parsed_outputs = [o.outputs[0].text.strip() for o in mcot_outputs]
 
-    eng_confidence = calculate_confidence(english_outputs)
-    mcot_confidence = calculate_confidence(mcot_outputs)
+    return questions, answers, english_outputs, english_parsed_outputs, mcot_outputs, mcot_parsed_outputs
+
+
+
+
+
+
+
+def _compute_confidence(reqs, language_model, sampling_params):
+    questions, answers, english_outputs, english_parsed_outputs, mcot_outputs, mcot_parsed_outputs = inference(reqs, language_model, sampling_params)
+
+    eng_confidence = calculate_answer_confidence(english_outputs)
+    mcot_confidence = calculate_answer_confidence(mcot_outputs)
 
     rewards = []
     for eng, mcot, answer, eng_conf, mcot_conf in zip(english_parsed_outputs, mcot_parsed_outputs, answers, eng_confidence, mcot_confidence):
-        
-        # vV3
-        if eng_conf - mcot_conf > 0.1: # confidence of mcot is significantly bad, we want to increase it, regardless of the answer
+        if eng_conf - mcot_conf > 0.3: # confidence of mcot is significantly bad, we want to increase it, regardless of the answer
             rewards.append(1.0)
-        elif abs(eng_conf - mcot_conf) <= 0.1: # pretty much the same confidence, it would be good if mcot is incorect while eng is correct:
-            rewards.append(0.1)
-        elif mcot_conf - eng_conf > 0.1: # mcot confidence is pretty good, regardless of correctness we don't need to touch these samples
+        elif abs(eng_conf - mcot_conf) <= 0.3: # pretty much the same confidence, it would be good if mcot is incorect while eng is correct:
             rewards.append(0.0)
-
-
-
-        # V4
-        # eng_correct = answer in eng
-        # mcot_correct = answer in mcot
-
-        # if eng_conf - mcot_conf > 0.1: # confidence of mcot is significantly bad, we want to increase it, regardless of the answer
-        #     rewards.append(1.0)
-        # elif abs(eng_conf - mcot_conf) <= 0.1: # pretty much the same confidence, it would be good if mcot is incorect while eng is correct:
-        #     if eng_correct and not mcot_correct:
-        #         rewards.append(1.0)
-        #     else:
-        #         rewards.append(0.0)
-        # elif mcot_conf - eng_conf > 0.1: # mcot confidence is pretty good, regardless of correctness we don't need to touch these samples
-        #     rewards.append(0.0)
-
-        # V1/v2
-        # if eng_correct and mcot_correct:
-        #     rewards.append(0.0)
-        # elif eng_correct and not mcot_correct:
-        #     rewards.append(1.0)
-        # elif not eng_correct and mcot_correct:
-        #     rewards.append(0.25)
-        # elif not eng_correct and not mcot_correct:
-        #     rewards.append(0.5)
-
-
+        elif mcot_conf - eng_conf > 0.3: # mcot confidence is pretty good, regardless of correctness we don't need to touch these samples
+            rewards.append(0.5)
     return [RewardsResponse(acquisition_reward=r) for r in rewards]
 
-# def _compute_confidence(reqs, language_model, sampling_params):
-#     questions = [req.data['question'] for req in reqs]
-#     outputs = language_model.generate(questions, sampling_params=sampling_params)
-#     results = []
-#     for output in outputs:
-#         logprobs = output.outputs[0].logprobs
-#         top1, top2 = [], []
-#         for lp in logprobs:
-#             keys = list(lp.keys())
-#             if len(keys) >= 2:
-#                 top1.append(lp[keys[0]].logprob)
-#                 top2.append(lp[keys[1]].logprob)
-#         if not top1:
-#             results.append(RewardsResponse(acquisition_reward=-5.0))
-#             continue
-#         avg_diff = (torch.exp(torch.tensor(top1)) - torch.exp(torch.tensor(top2))).mean()
-#         results.append(RewardsResponse(acquisition_reward=float(1.0 / avg_diff)))
-#     return results
+def _compute_answerdiff(reqs, language_model, sampling_params):
+    questions, answers, english_outputs, english_parsed_outputs, mcot_outputs, mcot_parsed_outputs = inference(reqs, language_model, sampling_params)
 
+    rewards = []
+    for eng, mcot, answer in zip(english_parsed_outputs, mcot_parsed_outputs, answers):
+        eng_correct = answer in eng
+        mcot_correct = answer in mcot
+        if eng_correct and not mcot_correct: # representation gap
+            rewards.append(1.0)
+        elif (mcot_correct and not eng_correct) or (not mcot_correct and not eng_correct): # representation gap OR understanding gap
+            rewards.append(0.5)
+        else:
+            rewards.append(0.0)
+    return [RewardsResponse(acquisition_reward=r) for r in rewards]
 
-# def _compute_proximity(reqs, embedding_model, cluster_centers_tensor):
-#     questions = [req.data['question'] for req in reqs]
-#     completion_embeddings = embedding_model.embed(questions)
-#     completion_tensor = torch.Tensor([c.outputs.embedding for c in completion_embeddings])
-#     completion_tensor = completion_tensor.to(cluster_centers_tensor.dtype)
-#     similarities = completion_tensor @ cluster_centers_tensor.T  # (B, 100)
-#     nearest_cluster_ids = similarities.argmax(dim=1)
-#     return [
-#         RewardsResponse(acquisition_reward=similarities[i, cid].item())
-#         for i, cid in enumerate(nearest_cluster_ids)
-#     ]
+def _compute_semreasoning(reqs, language_model, sampling_params, embedding_model):
+    questions, answers, english_outputs, english_parsed_outputs, mcot_outputs, mcot_parsed_outputs = inference(reqs, language_model, sampling_params)
+    eng_reasoning = [e.split("<reasoning>")[-1].split("</reasoning>")[0] for e in english_parsed_outputs]
+    mcot_reasoning = [m.split("<reasoning>")[-1].split("</reasoning>")[0] for m in mcot_parsed_outputs]
 
+    eng_embeddings = embedding_model.embed(eng_reasoning)
+    eng_embeddings = torch.Tensor([a.outputs.embedding for a in eng_embeddings])
+    mcot_embeddings = embedding_model.embed(mcot_reasoning)
+    mcot_embeddings = torch.Tensor([a.outputs.embedding for a in mcot_embeddings])
 
-# def _compute_diversity(reqs, embedding_model, cluster_centers_tensor):
-#     questions = [req.data['question'] for req in reqs]
-#     completion_embeddings = embedding_model.embed(questions)
-#     completion_tensor = torch.Tensor([c.outputs.embedding for c in completion_embeddings])
-#     completion_tensor = completion_tensor.to(cluster_centers_tensor.dtype)
-#     similarities = completion_tensor @ cluster_centers_tensor.T  # (B, 100)
-#     return [
-#         RewardsResponse(acquisition_reward=float(1.0 - similarities[i].max().item()))
-#         for i in range(len(reqs))
-#     ]
+    results = []
+    for eng, mcot in zip(eng_embeddings, mcot_embeddings):
+        dist = 1.0 - F.cosine_similarity(eng.unsqueeze(0), mcot.unsqueeze(0)).item()
+        results.append(RewardsResponse(acquisition_reward=dist))
+    return results
 
+def _compute_hlrep(reqs, tokenizer, model):
+    import torch.nn.functional as F
 
-# def _compute_gradient(reqs, tokenizer, model):
-#     # Gradient must be computed per-sample (backward pass resets grads), so loop
-#     results = []
-#     device = next(model.parameters()).device
-#     for req in reqs:
-#         prompt = req.data['question']
-#         output = req.data['answer']
+    results = []
+    device = next(model.parameters()).device
 
-#         messages = [{"role": "user", "content": prompt}, {"role": "assistant", "content": output}]
-#         text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
-#         enc = tokenizer(text, return_tensors="pt", padding=False, truncation=True)
+    english_only_instruction = lambda question: (
+        "Answer the following question. Reason step-by-step in English inside <reasoning> tags, then output your final answer inside <answer> tags.\n"
+        f"<question>\n{question}\n</question>\n"
+        "<reasoning>"
+    )
+    mcot_instruction = lambda question: (
+        "Answer the following question. Reason step-by-step in the language of the question inside <reasoning> tags, then output your final answer inside <answer> tags.\n"
+        f"<question>{question}</question>\n"
+        "<reasoning>"
+    )
 
-#         input_ids = enc["input_ids"].to(device)
-#         attention_mask = enc["attention_mask"].to(device)
+    reasoning_close_ids = tokenizer("</reasoning>", add_special_tokens=False).input_ids
 
-#         labels = input_ids.clone()
-#         prompt_text = tokenizer.apply_chat_template(
-#             [{"role": "user", "content": prompt}, {"role": "assistant", "content": ""}],
-#             tokenize=False, add_generation_prompt=False
-#         )
-#         prompt_len = tokenizer(prompt_text, return_tensors="pt")["input_ids"].shape[1]
-#         labels[:, :prompt_len] = -100
+    def find_reasoning_end(ids_list):
+        for i in range(len(ids_list) - len(reasoning_close_ids) + 1):
+            if ids_list[i:i + len(reasoning_close_ids)] == reasoning_close_ids:
+                return i
+        return len(ids_list)
 
-#         model.zero_grad()
-#         with torch.autocast("cuda", dtype=torch.bfloat16):
-#             loss = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels).loss
-#         loss.backward()
+    for req in reqs:
+        question = req.data['question']
 
-#         total_sq = sum(
-#             p.grad.detach().float().norm().item() ** 2
-#             for p in model.parameters() if p.grad is not None
-#         )
-#         results.append(RewardsResponse(acquisition_reward=total_sq ** 0.5))
-#     return results
+        eng_inputs = tokenizer(english_only_instruction(question), return_tensors='pt').to(device)
+        mcot_inputs = tokenizer(mcot_instruction(question), return_tensors='pt').to(device)
+        eng_prompt_len = eng_inputs['input_ids'].shape[1]
+        mcot_prompt_len = mcot_inputs['input_ids'].shape[1]
 
+        with torch.no_grad():
+            eng_gen_ids = model.generate(
+                **eng_inputs, max_new_tokens=512, do_sample=True, temperature=0.7,
+                pad_token_id=tokenizer.eos_token_id,
+            )
+            mcot_gen_ids = model.generate(
+                **mcot_inputs, max_new_tokens=512, do_sample=True, temperature=0.7,
+                pad_token_id=tokenizer.eos_token_id,
+            )
 
-# def _compute_answer_variance(reqs, language_model, sampling_params, embedding_model, k=16):
-#     # Generate k samples per question in one batched call
-#     questions_repeated = [req.data['question'] for req in reqs for _ in range(k)]
-#     raw_outputs = language_model.generate(questions_repeated, sampling_params=sampling_params)
-#     texts = [o.outputs[0].text.strip() for o in raw_outputs]
+        eng_new_ids = eng_gen_ids[0][eng_prompt_len:].tolist()
+        mcot_new_ids = mcot_gen_ids[0][mcot_prompt_len:].tolist()
 
-#     all_embeddings = embedding_model.embed(texts)
-#     all_embeddings = torch.Tensor([a.outputs.embedding for a in all_embeddings])
+        eng_reason_end = find_reasoning_end(eng_new_ids)
+        mcot_reason_end = find_reasoning_end(mcot_new_ids)
 
-#     results = []
-#     for i in range(len(reqs)):
-#         chunk = all_embeddings[i * k:(i + 1) * k]
-#         clusterer = hdbscan.HDBSCAN(min_cluster_size=2, min_samples=1, metric="euclidean")
-#         labels = clusterer.fit_predict(chunk)
-#         results.append(RewardsResponse(acquisition_reward=float(len(set(labels)))))
-#     return results
+        if eng_reason_end == 0 or mcot_reason_end == 0:
+            results.append(RewardsResponse(acquisition_reward=0.0))
+            continue
+
+        with torch.no_grad():
+            eng_out = model(input_ids=eng_gen_ids, output_hidden_states=True)
+            mcot_out = model(input_ids=mcot_gen_ids, output_hidden_states=True)
+
+        # Last layer hidden states: (1, seq_len, hidden_dim) -> (seq_len, hidden_dim)
+        eng_hidden = eng_out.hidden_states[-1][0]
+        mcot_hidden = mcot_out.hidden_states[-1][0]
+
+        # Mean-pool over the reasoning token positions (generated tokens up to </reasoning>)
+        eng_rep = eng_hidden[eng_prompt_len:eng_prompt_len + eng_reason_end].mean(dim=0)
+        mcot_rep = mcot_hidden[mcot_prompt_len:mcot_prompt_len + mcot_reason_end].mean(dim=0)
+
+        cos_dist = 1.0 - F.cosine_similarity(eng_rep.unsqueeze(0), mcot_rep.unsqueeze(0)).item()
+        results.append(RewardsResponse(acquisition_reward=cos_dist))
+
+    return results
 
 
 # --- init functions (called from all.py on service start) ---
 
-def init_mcot_worker(language_model, sampling_params):
-    global _mcot_queue
-    _mcot_queue = WorkerQueue()
-    _mcot_queue.start(_compute_mcot, language_model, sampling_params)
+def init_confidence_worker(language_model, sampling_params):
+    global _confidence_queue
+    _confidence_queue = WorkerQueue()
+    _confidence_queue.start(_compute_confidence, language_model, sampling_params)
 
-# def init_confidence_worker(language_model, sampling_params):
-#     global _confidence_queue
-#     _confidence_queue = WorkerQueue()
-#     _confidence_queue.start(_compute_confidence, language_model, sampling_params)
+def init_answerdiff_worker(language_model, sampling_params):
+    global _answerdiff_queue
+    _answerdiff_queue = WorkerQueue()
+    _answerdiff_queue.start(_compute_answerdiff, language_model, sampling_params)
 
-# def init_gradient_worker(tokenizer, model):
-#     global _gradient_queue
-#     _gradient_queue = WorkerQueue()
-#     _gradient_queue.start(_compute_gradient, tokenizer, model)
+def init_semreasoning_worker(language_model, sampling_params, embedding_model):
+    global _semreasoning_queue
+    _semreasoning_queue = WorkerQueue()
+    _semreasoning_queue.start(_compute_semreasoning, language_model, sampling_params, embedding_model)
 
-# def init_proximity_worker(embedding_model, cluster_centers_tensor):
-#     global _proximity_queue
-#     _proximity_queue = WorkerQueue()
-#     _proximity_queue.start(_compute_proximity, embedding_model, cluster_centers_tensor)
-
-# def init_diversity_worker(embedding_model, cluster_centers_tensor):
-#     global _diversity_queue
-#     _diversity_queue = WorkerQueue()
-#     _diversity_queue.start(_compute_diversity, embedding_model, cluster_centers_tensor)
-
-# def init_answer_variance_worker(language_model, sampling_params, embedding_model):
-#     global _answer_variance_queue
-#     _answer_variance_queue = WorkerQueue()
-#     _answer_variance_queue.start(_compute_answer_variance, language_model, sampling_params, embedding_model)
+def init_hlrep_worker(tokenizer, model):
+    global _hlrep_queue
+    _hlrep_queue = WorkerQueue()
+    _hlrep_queue.start(_compute_hlrep, tokenizer, model)
 
 
 # --- public API (called from all.py routes) ---
 
-def mcot(req):
-    if _mcot_queue is None:
-        raise RuntimeError("mcot worker not initialized — call /start_service first")
-    return _mcot_queue.submit(req)
+def confidence(req):
+    if _confidence_queue is None:
+        raise RuntimeError("confidence worker not initialized — call /start_service first")
+    return _confidence_queue.submit(req)
 
-# def confidence(req):
-#     if _confidence_queue is None:
-#         raise RuntimeError("confidence worker not initialized — call /start_service first")
-#     return _confidence_queue.submit(req)
+def answerdiff(req):
+    if _answerdiff_queue is None:
+        raise RuntimeError("answerdiff worker not initialized — call /start_service first")
+    return _answerdiff_queue.submit(req)
 
-# def gradient(req):
-#     if _gradient_queue is None:
-#         raise RuntimeError("gradient worker not initialized — call /start_service first")
-#     return _gradient_queue.submit(req)
+def semreasoning(req):
+    if _semreasoning_queue is None:
+        raise RuntimeError("semreasoning worker not initialized — call /start_service first")
+    return _semreasoning_queue.submit(req)
 
-# def proximity(req):
-#     if _proximity_queue is None:
-#         raise RuntimeError("proximity worker not initialized — call /start_service first")
-#     return _proximity_queue.submit(req)
-
-# def diversity(req):
-#     if _diversity_queue is None:
-#         raise RuntimeError("diversity worker not initialized — call /start_service first")
-#     return _diversity_queue.submit(req)
-
-# def answer_variance(req):
-#     if _answer_variance_queue is None:
-#         raise RuntimeError("answer_variance worker not initialized — call /start_service first")
-#     return _answer_variance_queue.submit(req)
+def hlrep(req):
+    if _hlrep_queue is None:
+        raise RuntimeError("hlrep worker not initialized — call /start_service first")
+    return _hlrep_queue.submit(req)

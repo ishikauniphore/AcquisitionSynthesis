@@ -1,14 +1,13 @@
 import sys
 sys.path.append('/home/ubuntu/AcquisitionSynthesis/rewards/')
 from format import parse
-from repeat_penalty import compute_repeat_penalty, compute_grounding_regularizer
 import requests
 import torch
 import os
 SERVER_IP = os.environ['SERVER_IP']
 
-def compute_mcot(data):
-    SERVER_A = f"http://{SERVER_IP}:5145/mcot"
+def compute_hlrep(data):
+    SERVER_A = f"http://{SERVER_IP}:5145/hlrep"
     payload = {
         "data": data,
     }
@@ -27,14 +26,14 @@ def compute_mcot(data):
     r.raise_for_status()
 
     if r.json()["acquisition_reward"] is not None:
-        mcot_reward = min(max(r.json()["acquisition_reward"], 0.0), 2.0)
+        hlrep_reward = min(max(r.json()["acquisition_reward"], 0.0), 1.0)
     else:
         return float(0.0)
-    return mcot_reward
+    return hlrep_reward
 
 def compute_score(data_source, solution_str, ground_truth, extra_info=None):
     data, xml_reward = parse(solution_str)
     if data is None: return float(0.0)
 
-    mcot_reward = compute_mcot(data)
-    return mcot_reward + xml_reward
+    hlrep_reward = compute_hlrep(data)
+    return hlrep_reward + xml_reward

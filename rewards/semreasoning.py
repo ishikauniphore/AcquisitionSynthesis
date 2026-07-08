@@ -6,8 +6,8 @@ import torch
 import os
 SERVER_IP = os.environ['SERVER_IP']
 
-def compute_confidence(data):
-    SERVER_A = f"http://{SERVER_IP}:5145/confidence"
+def compute_semreasoning(data):
+    SERVER_A = f"http://{SERVER_IP}:5145/semreasoning"
     payload = {
         "data": data,
     }
@@ -26,14 +26,14 @@ def compute_confidence(data):
     r.raise_for_status()
 
     if r.json()["acquisition_reward"] is not None:
-        confidence_reward = min(max(r.json()["acquisition_reward"], 0.0), 1.0)
+        semreasoning_reward = min(max(r.json()["acquisition_reward"], 0.0), 1.0)
     else:
         return float(0.0)
-    return confidence_reward
+    return semreasoning_reward
 
 def compute_score(data_source, solution_str, ground_truth, extra_info=None):
     data, xml_reward = parse(solution_str)
     if data is None: return float(0.0)
 
-    confidence_reward = compute_confidence(data)
-    return confidence_reward + xml_reward
+    semreasoning_reward = compute_semreasoning(data)
+    return semreasoning_reward + xml_reward

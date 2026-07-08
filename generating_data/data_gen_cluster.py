@@ -129,6 +129,7 @@ def generate_k_responses(
         model=model_name,
         tensor_parallel_size=torch.cuda.device_count(),
         gpu_memory_utilization=0.7,
+        disable_custom_all_reduce=True,
     )
     sp = SamplingParams(n=k, temperature=temperature, max_tokens=max_tokens, seed=seed)
 

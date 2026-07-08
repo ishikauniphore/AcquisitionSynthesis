@@ -2,7 +2,7 @@ import sys
 sys.path.append('/home/ubuntu/AcquisitionSynthesis/')
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '6,7'
 from typing import List, Dict
 from contextlib import asynccontextmanager
 
@@ -118,6 +118,11 @@ def clean_up():
     if language_tokenizer is not None:
         del language_tokenizer
 
+    # Stale TCPStore rendezvous vars from this run's destroyed distributed
+    # env would otherwise hang the next vLLM instance's spawned workers.
+    for key in ['MASTER_ADDR', 'MASTER_PORT', 'RANK', 'WORLD_SIZE', 'LOCAL_RANK', 'LOCAL_WORLD_SIZE']:
+        os.environ.pop(key, None)
+
     language_model = None
     llm_sampling_params = None
     embedding_model = None
@@ -126,20 +131,23 @@ def clean_up():
     language_auto_model = None
     gc.collect()
     torch.cuda.empty_cache()
+
+
 ############################################# START SERVICE #############################################
 @app.post("/start_service", response_model=ActivateResponse)
 def start_service(req: ActivateRequest):
     # clean_up()
-    global language_model, llm_sampling_params #, embedding_model, cluster_centers_tensor, language_auto_model, language_tokenizer
+    global language_model, llm_sampling_params, embedding_model, language_auto_model, language_tokenizer
     
-    if "mcot" in req.service:
+    if "confidence" in req.service or "answerdiff" in req.service:
         if language_model is not None:
             return {"status": "ok", "service": req.service}
 
         model_name = req.kwargs.get("model_name")
         language_model = LLM(model_name, tensor_parallel_size=1, gpu_memory_utilization=0.9, trust_remote_code=True, max_model_len=4096)
         llm_sampling_params = SamplingParams(temperature=0.7, logprobs=2, max_tokens=512)
-        service_utils.init_mcot_worker(language_model, llm_sampling_params)
+        service_utils.init_confidence_worker(language_model, llm_sampling_params)
+        service_utils.init_answerdiff_worker(language_model, llm_sampling_params)
         return {"status": "ok", "service": req.service}
     
     # if "confidence" in req.service:
@@ -158,24 +166,24 @@ def start_service(req: ActivateRequest):
     #     service_utils.init_diversity_worker(embedding_model, cluster_centers_tensor)
     #     return {"status": "ok", "service": req.service}
 
-    # if "gradient" in req.service:
-    #     model_name = req.kwargs.get("model_name")
-    #     language_auto_model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map="auto")
-    #     language_tokenizer = AutoTokenizer.from_pretrained(model_name)
-    #     language_tokenizer.pad_token_id = language_tokenizer.eos_token_id
-    #     language_tokenizer.padding_size = "left"
-    #     service_utils.init_gradient_worker(language_tokenizer, language_auto_model)
-    #     return {"status": "ok", "service": req.service}
+    if "hlrep" in req.service:
+        model_name = req.kwargs.get("model_name")
+        language_auto_model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map="auto")
+        language_tokenizer = AutoTokenizer.from_pretrained(model_name)
+        language_tokenizer.pad_token_id = language_tokenizer.eos_token_id
+        language_tokenizer.padding_size = "left"
+        service_utils.init_hlrep_worker(language_tokenizer, language_auto_model)
+        return {"status": "ok", "service": req.service}
 
-    # if "answer_variance" in req.service:
-    #     model_name = req.kwargs.get("model_name")
-    #     os.environ['CUDA_VISIBLE_DEVICES'] = '6'
-    #     language_model = LLM(model_name, tensor_parallel_size=1, gpu_memory_utilization=0.7, trust_remote_code=True)
-    #     llm_sampling_params = SamplingParams(temperature=0.7, max_tokens=2048)
-    #     os.environ['CUDA_VISIBLE_DEVICES'] = '7'
-    #     embedding_model = LLM("Qwen/Qwen3-Embedding-0.6B", task="embed")
-    #     service_utils.init_answer_variance_worker(language_model, llm_sampling_params, embedding_model)
-    #     return {"status": "ok", "service": req.service}
+    if "semreasoning" in req.service:
+        model_name = req.kwargs.get("model_name")
+        os.environ['CUDA_VISIBLE_DEVICES'] = '6'
+        language_model = LLM(model_name, tensor_parallel_size=1, gpu_memory_utilization=0.7, trust_remote_code=True)
+        llm_sampling_params = SamplingParams(temperature=0.7, max_tokens=2048)
+        os.environ['CUDA_VISIBLE_DEVICES'] = '7'
+        embedding_model = LLM("Qwen/Qwen3-Embedding-0.6B", task="embed")
+        service_utils.init_semreasoning_worker(language_model, llm_sampling_params, embedding_model)
+        return {"status": "ok", "service": req.service}
 
     
     if "format" in req.service:
@@ -186,9 +194,18 @@ def start_service(req: ActivateRequest):
 ############################################# START SERVICE #############################################
 
 ############################################# CONFIDENCE #############################################
-@app.post("/mcot", response_model=RewardsResponse)
-def mcot_rewards(req: RewardsRequest, x_api_key: str | None = Header(default=None)):
-    return service_utils.mcot(req)
+@app.post("/confidence", response_model=RewardsResponse)
+def confidence_rewards(req: RewardsRequest, x_api_key: str | None = Header(default=None)):
+    return service_utils.confidence(req)
+@app.post("/answerdiff", response_model=RewardsResponse)
+def answerdiff_rewards(req: RewardsRequest, x_api_key: str | None = Header(default=None)):
+    return service_utils.answerdiff(req)
+@app.post("/semreasoning", response_model=RewardsResponse)
+def semreasoning_rewards(req: RewardsRequest, x_api_key: str | None = Header(default=None)):
+    return service_utils.semreasoning(req)
+@app.post("/hlrep", response_model=RewardsResponse)
+def hlrep_rewards(req: RewardsRequest, x_api_key: str | None = Header(default=None)):
+    return service_utils.hlrep(req)
 
 @app.post("/end_service", response_model=RewardsResponse)
 def end_service():
