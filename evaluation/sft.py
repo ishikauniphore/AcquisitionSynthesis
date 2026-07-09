@@ -24,7 +24,7 @@ def get_prompt_template(data_name):
 def format_prompt(example, tokenizer, prompt_template):
     messages = [
         {"role": "user", "content": prompt_template(example['question'])},
-        {"role": "assistant", "content": f"<reasoning> {example['reasoning']} </reasoning>\n<answer> {example['answer']} </answer>"},
+        {"role": "assistant", "content": f"<reasoning> {example['reasoning']} </reasoning>\n<answer> \\boxed{{{example['answer']}}} </answer>"},
     ]
     return {"text": tokenizer.apply_chat_template(messages, tokenize=False)}
 

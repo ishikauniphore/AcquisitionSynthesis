@@ -1,7 +1,7 @@
 DATASET="nemotron_stem"
 
 ### STEP 2: Formatting
-py generating_data/baseline_selection_random.py --data "${DATASET}" --size 1000 --file "/home/ubuntu/AcquisitionSynthesis/training_data/selected_${DATASET}_1k.parquet"
+py generating_data/baseline_selection_random.py --data "${DATASET}" --size 1000 --file "/home/ubuntu/AcquisitionSynthesis/training_data/selected_${DATASET}.parquet"
 
 ### STEP 3: Student evaluation
 cd evaluation

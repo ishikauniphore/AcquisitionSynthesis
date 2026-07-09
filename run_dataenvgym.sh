@@ -1,4 +1,4 @@
-DATASET="nemotron_math"
+DATASET="nemotron_stem"
 
 cd generating_data
 py baseline_synthesis_DataEnvGym.py \

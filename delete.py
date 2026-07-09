@@ -30,7 +30,7 @@ def delete_all_my_models():
         print("No models found under your account.")
         return
 
-    models = [m for m in models if "nemotron" in m.id]
+    models = [m for m in models if "student" in m.id]
     
     print(f"Found {len(models)} models.")
     for model in models:
