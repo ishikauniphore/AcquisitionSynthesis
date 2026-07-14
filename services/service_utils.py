@@ -65,6 +65,7 @@ _confidence_queue: WorkerQueue | None = None
 _answerdiff_queue: WorkerQueue | None = None
 _semreasoning_queue: WorkerQueue | None = None
 _hlrep_queue: WorkerQueue | None = None
+_combined_queue: WorkerQueue | None = None
 
 
 # --- pure compute functions ---
@@ -87,7 +88,7 @@ def calculate_answer_confidence(outputs):
             confidence.append(-5.0)
             continue
         avg_diff = (torch.exp(torch.tensor(top1)) - torch.exp(torch.tensor(top2))).mean()
-        confidence.append(float(1.0 / avg_diff))
+        confidence.append(float(avg_diff))
     return confidence
 
 def calculate_confidence(outputs):
@@ -103,8 +104,12 @@ def calculate_confidence(outputs):
         if not top1:
             confidence.append(-5.0)
             continue
-        avg_diff = (torch.exp(torch.tensor(top1)) - torch.exp(torch.tensor(top2))).mean()
-        confidence.append(float(1.0 / avg_diff))
+        avg_diff = (
+            torch.exp(torch.tensor(top1)) 
+            - 
+            torch.exp(torch.tensor(top2))
+        ).mean()
+        confidence.append(float(avg_diff))
     return confidence
 
 def inference(reqs, language_model, sampling_params):
@@ -256,6 +261,20 @@ def _compute_hlrep(reqs, tokenizer, model):
 
     return results
 
+def _compute_combined(reqs, language_model, llm_sampling_params, language_tokenizer, language_auto_model):
+    questions, answers, english_outputs, english_parsed_outputs, mcot_outputs, mcot_parsed_outputs = inference(reqs, language_model, llm_sampling_params)
+    eng_confidence = calculate_answer_confidence(english_outputs)
+
+    hlrep_rewards = _compute_hlrep(reqs, language_tokenizer, language_auto_model)
+
+    results = []
+    for eng, hlrep in zip(eng_confidence, hlrep_rewards):
+        conf = max(1.0/eng, 1.0)
+        rep = max(hlrep.acquisition_reward, 1.0)
+        results.append(RewardsResponse(acquisition_reward=conf + rep))
+
+    return results
+
 
 # --- init functions (called from all.py on service start) ---
 
@@ -279,6 +298,11 @@ def init_hlrep_worker(tokenizer, model):
     _hlrep_queue = WorkerQueue()
     _hlrep_queue.start(_compute_hlrep, tokenizer, model)
 
+def init_combined_worker(language_model, llm_sampling_params, language_tokenizer, language_auto_model):
+    global _combined_queue
+    _combined_queue = WorkerQueue()
+    _combined_queue.start(_compute_combined, language_model, llm_sampling_params, language_tokenizer, language_auto_model)
+
 
 # --- public API (called from all.py routes) ---
 
@@ -301,3 +325,8 @@ def hlrep(req):
     if _hlrep_queue is None:
         raise RuntimeError("hlrep worker not initialized — call /start_service first")
     return _hlrep_queue.submit(req)
+
+def combined(req):
+    if _combined_queue is None:
+        raise RuntimeError("combined worker not initialized — call /start_service first")
+    return _combined_queue.submit(req)

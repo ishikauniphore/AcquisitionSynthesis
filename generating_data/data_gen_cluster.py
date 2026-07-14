@@ -1,4 +1,5 @@
 import os
+import sys
 import argparse
 import json
 import re
@@ -16,6 +17,9 @@ from vllm.distributed.parallel_state import destroy_model_parallel, destroy_dist
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics import silhouette_score
 from sklearn.metrics.pairwise import cosine_similarity
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from prompts import get_prompt_template, canonicalize_answer
 
 LANGUAGE_SET = ['English', 'French', 'Spanish', 'Arabic', 'Portuguese', 'Italian']
 def parse_reasoning(text):
@@ -95,15 +99,12 @@ def generate_questions(model_name, dataset_name, size):
 
 # ── Step 2: Generate answers for each question ────────────────────────────────
 
-def apply_chat_template(model_name, prompts):
+def apply_chat_template(model_name, prompts, dataset_name):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    mcot_instruction = lambda question: (
-        "Answer the following question in the language of the question."
-        "Place all reasoning inside <reasoning> tags (in the language of the question) and your final answer inside <answer> tags.\n"
-        f"<question> {question} </question>\n"
-        "<reasoning> </reasoning>\n"
-        "<answer> </answer>"
-    )
+    # Reuse the exact same instruction/tag/\boxed{} format used at SFT and eval
+    # time (prompts.py), so the labels this script produces are in the format
+    # the student is actually trained and scored on.
+    mcot_instruction = get_prompt_template(dataset_name, multilingual=True)
     return [
         tokenizer.apply_chat_template(
             [{"role": "user", "content": mcot_instruction(p)}],
@@ -116,13 +117,14 @@ def apply_chat_template(model_name, prompts):
 def generate_k_responses(
     questions: list[dict],
     model_name: str,
+    dataset_name: str,
     k: int = 16,
     temperature: float = 0.8,
     max_tokens: int = 2048,
     seed: int = 42,
 ) -> list[dict]:
     """Generate K diverse responses per question. Adds 'generations' field to each dict."""
-    prompts = apply_chat_template(model_name, questions)
+    prompts = apply_chat_template(model_name, [q["question"] for q in questions], dataset_name)
 
     print(f"  [vllm] Loading answer model: {model_name}")
     llm = LLM(
@@ -165,6 +167,7 @@ def generate_k_responses(
 
 def cluster_and_pick(
     questions: list[dict],
+    dataset_name: str,
     embed_model_name: str = "all-MiniLM-L6-v2",
     distance_threshold: float = 0.35,
 ) -> list[dict]:
@@ -180,7 +183,10 @@ def cluster_and_pick(
     for q in tqdm(questions, desc="  [cluster]"):
         all_generations = q.pop("generations")
         full_answers = [g for g in all_generations if parse_reasoning(g) is not None] or all_generations
-        texts = [parse_answer(t) for t in full_answers]
+        # Canonicalize before clustering: without this, "A", "A)", and "A."
+        # from different generations count as distinct answers, splitting
+        # what should be one majority-vote cluster into several.
+        texts = [canonicalize_answer(parse_answer(t), dataset_name) for t in full_answers]
         k = len(texts)
 
         if len(set(texts)) == 1:
@@ -217,7 +223,7 @@ def cluster_and_pick(
             medoid_local = int(np.argmin(sub_dist.mean(axis=1)))
             best_idx = int(sub_indices[medoid_local])
 
-        q["answer"] = parse_answer(full_answers[best_idx])
+        q["answer"] = texts[best_idx]
         q["reasoning"] = parse_reasoning(full_answers[best_idx])
 
     return questions
@@ -226,6 +232,7 @@ def cluster_and_pick(
 def generate_answers(
     model_name: str,
     questions: list[str],
+    dataset_name: str,
     k: int = 16,
     temperature: float = 0.8,
     max_tokens: int = 2048,
@@ -237,8 +244,8 @@ def generate_answers(
     and return the medoid of the largest cluster as the final answer.
     """
     q_dicts = [{"index": i, "question": q} for i, q in enumerate(questions)]
-    q_dicts = generate_k_responses(q_dicts, model_name, k=k, temperature=temperature, max_tokens=max_tokens)
-    q_dicts = cluster_and_pick(q_dicts, embed_model_name=embed_model, distance_threshold=distance_threshold)
+    q_dicts = generate_k_responses(q_dicts, model_name, dataset_name, k=k, temperature=temperature, max_tokens=max_tokens)
+    q_dicts = cluster_and_pick(q_dicts, dataset_name, embed_model_name=embed_model, distance_threshold=distance_threshold)
     return [q["answer"] for q in q_dicts], [q["reasoning"] for q in q_dicts]
 
 
@@ -292,7 +299,7 @@ def main():
 
     print("=== Step 2: Generating answers ===")
     answers, reasonings = generate_answers(
-        answer_model, questions,
+        answer_model, questions, args.dataset_name,
         k=args.k,
         temperature=args.temperature,
         embed_model=args.embed_model,

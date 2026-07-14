@@ -10,4 +10,3 @@ for MODEL_NAME in "${MODEL_NAMES[@]}"; do
 done
 
 cd ..
-source keep_alive.sh

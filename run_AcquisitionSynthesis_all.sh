@@ -1,64 +1,59 @@
-export VLLM_USE_V1=0
-REWARD="mcot"
-DATASETS=("nemotron_stem" "nemotron_math" "nemotron_chat")
+# DATASET="nemotron_stem"
+# export CUDA_VISIBLE_DEVICES=0,1,2,3
+# MODEL_NAME="meta-llama/Llama-3.1-8B-Instruct"
+# MODEL_SHORTHAND="llama8bins"
+# REWARDS=("answerdiff" "confidence" "semreasoning" "hlrep")
+# for REWARD in "${REWARDS[@]}"; do
+#     ### STEP 2: Dataset generation
+#     py generating_data/data_gen_cluster.py \
+#         --dataset_name "${DATASET}" \
+#         --acquisition_model_name "${HF_USERNAME}/generator_${MODEL_SHORTHAND}_${DATASET}_${REWARD}" \
+#         --answer_model_name "${MODEL_NAME}" \
+#         --output_file "/home/ubuntu/AcquisitionSynthesis/training_data/${MODEL_SHORTHAND}_${DATASET}_${REWARD}.parquet" \
+#     --size 1000 --k 4
+
+#     ### STEP 3: Student evaluation
+#     cd evaluation
+#     rm -rf /dev/shm/sft_models/
+#     torchrun --nproc_per_node=4 --master_port=29500 sft.py \
+#         --model_name "${MODEL_NAME}" \
+#         --file_name "/home/ubuntu/AcquisitionSynthesis/training_data/${MODEL_SHORTHAND}_${DATASET}_${REWARD}.parquet"
+#     py merge.py --model_path "/dev/shm/sft_models/${MODEL_SHORTHAND}_${DATASET}_${REWARD}" --base_model "${MODEL_NAME}"
+
+#     source run_eval.sh "ishikauniphore/student_${MODEL_SHORTHAND}_${DATASET}_${REWARD}"
+#     cd ..
+
+#     notify "experiment done!!!! 0_0 ${MODEL_SHORTHAND}_${DATASET}_${REWARD}"
+# done
+# source keep_alive.sh
 
 
-for DATASET in "${DATASETS[@]}"; do
-    ### STEP 1: Acquisition training
-    rm -rf /dev/shm/grpo_synthesis_models
-    GRPO_KWARGS="{\"model_name\": \"Qwen/Qwen2.5-7B-Instruct\", \"dataset_name\": \"/home/ubuntu/AcquisitionSynthesis/data/${DATASET}/train.parquet\"}"
-    source run_verl.sh "Qwen/Qwen2.5-3B-Instruct" "rewards/${REWARD}.py" "3bT-7bS_${DATASET}_${REWARD}" "${DATASET}" "${REWARD}" "$GRPO_KWARGS"
-done
-notify "models are trained"
 
-
-for DATASET in "${DATASETS[@]}"; do
-    ## STEP 2: Dataset generations
+DATASET="nemotron_stem"
+export CUDA_VISIBLE_DEVICES=4,5,6,7
+MODEL_NAME="Qwen/Qwen2.5-14B-Instruct"
+MODEL_SHORTHAND="qwen14bins"
+REWARDS=("semreasoning" "hlrep")
+for REWARD in "${REWARDS[@]}"; do
+    ### STEP 2: Dataset generation
     py generating_data/data_gen_cluster.py \
         --dataset_name "${DATASET}" \
-        --acquisition_model_name "${HF_USERNAME}/acquisition_3bT-7bS_${DATASET}_${REWARD}" \
-        --answer_model_name "Qwen/Qwen2.5-7B-Instruct" \
-        --output_file "training_data/3bT-7bS_${DATASET}_${REWARD}.parquet" \
-        --size 1000 --k 4
+        --acquisition_model_name "${HF_USERNAME}/generator_${MODEL_SHORTHAND}_${DATASET}_${REWARD}" \
+        --answer_model_name "${MODEL_NAME}" \
+        --output_file "/home/ubuntu/AcquisitionSynthesis/training_data/${MODEL_SHORTHAND}_${DATASET}_${REWARD}.parquet" \
+    --size 1000 --k 4
 
     ### STEP 3: Student evaluation
     cd evaluation
     rm -rf /dev/shm/sft_models/
-    torchrun --nproc_per_node=4 sft.py \
-        --model_name "Qwen/Qwen2.5-7B-Instruct" \
-        --file_name "/home/ubuntu/AcquisitionSynthesis/training_data/3bT-7bS_${DATASET}_${REWARD}.parquet"
-    py merge.py --model_path "/dev/shm/sft_models/3bT-7bS_${DATASET}_${REWARD}"
+    torchrun --nproc_per_node=4 --master_port=29501 sft.py \
+        --model_name "${MODEL_NAME}" \
+        --file_name "/home/ubuntu/AcquisitionSynthesis/training_data/${MODEL_SHORTHAND}_${DATASET}_${REWARD}.parquet"
+    py merge.py --model_path "/dev/shm/sft_models/${MODEL_SHORTHAND}_${DATASET}_${REWARD}" --base_model "${MODEL_NAME}"
 
-    py model_inference.py \
-        --model_name "/dev/shm/sft_models/3bT-7bS_${DATASET}_${REWARD}" \
-        --dataset "/home/ubuntu/AcquisitionSynthesis/data/nemotron_chat/test.parquet"
-    py model_inference.py \
-        --model_name "/dev/shm/sft_models/3bT-7bS_${DATASET}_${REWARD}" \
-        --dataset "/home/ubuntu/AcquisitionSynthesis/data/nemotron_stem/test.parquet"
-    py model_inference.py \
-        --model_name "/dev/shm/sft_models/3bT-7bS_${DATASET}_${REWARD}" \
-        --dataset "/home/ubuntu/AcquisitionSynthesis/data/nemotron_math/test.parquet"
-
+    source run_eval.sh "ishikauniphore/student_${MODEL_SHORTHAND}_${DATASET}_${REWARD}"
     cd ..
+
+    notify "experiment done!!!! 0_0 ${MODEL_SHORTHAND}_${DATASET}_${REWARD}"
 done
-
-py model_inference.py \
-    --model_name "Qwen/Qwen2.5-3B-Instruct" \
-    --dataset "/home/ubuntu/AcquisitionSynthesis/data/nemotron_chat/test.parquet"
-py model_inference.py \
-    --model_name "Qwen/Qwen2.5-3B-Instruct" \
-    --dataset "/home/ubuntu/AcquisitionSynthesis/data/nemotron_stem/test.parquet"
-py model_inference.py \
-    --model_name "Qwen/Qwen2.5-3B-Instruct" \
-    --dataset "/home/ubuntu/AcquisitionSynthesis/data/nemotron_math/test.parquet"
-py model_inference.py \
-    --model_name "Qwen/Qwen2.5-7B-Instruct" \
-    --dataset "/home/ubuntu/AcquisitionSynthesis/data/nemotron_chat/test.parquet"
-py model_inference.py \
-    --model_name "Qwen/Qwen2.5-7B-Instruct" \
-    --dataset "/home/ubuntu/AcquisitionSynthesis/data/nemotron_stem/test.parquet"
-py model_inference.py \
-    --model_name "Qwen/Qwen2.5-7B-Instruct" \
-    --dataset "/home/ubuntu/AcquisitionSynthesis/data/nemotron_math/test.parquet"
-
-notify "experiment done!!!! 0_0"
+source keep_alive.sh

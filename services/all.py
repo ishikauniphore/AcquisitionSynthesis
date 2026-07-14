@@ -167,6 +167,7 @@ def start_service(req: ActivateRequest):
     #     return {"status": "ok", "service": req.service}
 
     if "hlrep" in req.service:
+        os.environ['CUDA_VISIBLE_DEVICES'] = '6'
         model_name = req.kwargs.get("model_name")
         language_auto_model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map="auto")
         language_tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -178,17 +179,36 @@ def start_service(req: ActivateRequest):
     if "semreasoning" in req.service:
         model_name = req.kwargs.get("model_name")
         os.environ['CUDA_VISIBLE_DEVICES'] = '6'
-        language_model = LLM(model_name, tensor_parallel_size=1, gpu_memory_utilization=0.7, trust_remote_code=True)
+        language_model = LLM(model_name, tensor_parallel_size=1, gpu_memory_utilization=0.7, trust_remote_code=True, max_model_len=4096)
         llm_sampling_params = SamplingParams(temperature=0.7, max_tokens=2048)
         os.environ['CUDA_VISIBLE_DEVICES'] = '7'
         embedding_model = LLM("Qwen/Qwen3-Embedding-0.6B", task="embed")
         service_utils.init_semreasoning_worker(language_model, llm_sampling_params, embedding_model)
         return {"status": "ok", "service": req.service}
 
+    if "combined" in req.service:
+        if language_model is not None:
+            return {"status": "ok", "service": req.service}
+
+        # confidence (defaults to cuda:0, i.e. physical GPU 6 from CUDA_VISIBLE_DEVICES='6,7' at module load)
+        model_name = req.kwargs.get("model_name")
+        language_model = LLM(model_name, tensor_parallel_size=1, gpu_memory_utilization=0.9, trust_remote_code=True, max_model_len=4096)
+        llm_sampling_params = SamplingParams(temperature=0.7, logprobs=2, max_tokens=512)
+
+        # hlrep (pinned to cuda:1, i.e. physical GPU 7 — CUDA_VISIBLE_DEVICES can't be
+        # changed mid-process since vLLM above already initialized a CUDA context)
+        language_auto_model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map={"": "cuda:1"})
+        language_tokenizer = AutoTokenizer.from_pretrained(model_name)
+        language_tokenizer.pad_token_id = language_tokenizer.eos_token_id
+        language_tokenizer.padding_size = "left"
+
+        service_utils.init_combined_worker(language_model, llm_sampling_params, language_tokenizer, language_auto_model)
+        return {"status": "ok", "service": req.service}
     
     if "format" in req.service:
         return {"status": "ok", "service": req.service}
     
+    print('Unknown service requested:', req.service)
     0/0
             
 ############################################# START SERVICE #############################################
@@ -206,32 +226,14 @@ def semreasoning_rewards(req: RewardsRequest, x_api_key: str | None = Header(def
 @app.post("/hlrep", response_model=RewardsResponse)
 def hlrep_rewards(req: RewardsRequest, x_api_key: str | None = Header(default=None)):
     return service_utils.hlrep(req)
+@app.post("/combined", response_model=RewardsResponse)
+def combined_rewards(req: RewardsRequest, x_api_key: str | None = Header(default=None)):
+    return service_utils.combined(req)
 
 @app.post("/end_service", response_model=RewardsResponse)
 def end_service():
     import os, signal
     os.kill(os.getpid(), signal.SIGTERM)
-
-# @app.post("/confidence", response_model=RewardsResponse)
-# def conf_rewards(req: RewardsRequest, x_api_key: str | None = Header(default=None)):
-#     return service_utils.confidence(req)
-
-# @app.post("/diversity", response_model=RewardsResponse)
-# def diversity_rewards(req: RewardsRequest, x_api_key: str | None = Header(default=None)):
-#     return service_utils.diversity(req)
-
-# @app.post("/proximity", response_model=RewardsResponse)
-# def proximity_rewards(req: RewardsRequest, x_api_key: str | None = Header(default=None)):
-#     return service_utils.proximity(req)
-
-# @app.post("/gradient", response_model=RewardsResponse)
-# def gradient_rewards(req: RewardsRequest, x_api_key: str | None = Header(default=None)):
-#     return service_utils.gradient(req)
-
-# @app.post("/answer_variance", response_model=RewardsResponse)
-# def answer_variance_rewards(req: RewardsRequest, x_api_key: str | None = Header(default=None)):
-#     return service_utils.answer_variance(req)
-############################################# ANSWER_VARIANCE #############################################
 
 if __name__ == "__main__":
     import uvicorn

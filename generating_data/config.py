@@ -18,12 +18,14 @@ def load_data(data_name):
     questions = list(df.apply(lambda row: row['extra_info']['grounding_question'], axis=1))
     answers = list(df.apply(lambda row: row['extra_info']['grounding_answer'], axis=1))
     reasonings = list(df.apply(lambda row: row['extra_info']['grounding_reasoning'], axis=1))
+    languages = list(df.apply(lambda row: row['extra_info']['grounding_language'], axis=1))
 
     return pd.DataFrame.from_dict({
             "index": np.arange(len(df)),
             "question": questions,
             "reasoning": reasonings,
             "answer": answers,
+            "language": languages
         })
     
     0/0

@@ -36,8 +36,9 @@ torchrun --nproc_per_node=4 sft.py \
     --file_name "/home/ubuntu/AcquisitionSynthesis/training_data/Original_${DATASET}_qwen7bins.parquet"
 py merge.py --model_path "/dev/shm/sft_models/Original_${DATASET}_qwen7bins" --base_model "Qwen/Qwen2.5-7B-Instruct"
 
+export CUDA_VISIBLE_DEVICES=7
 rm -rf /dev/shm/sft_models/
-torchrun --nproc_per_node=4 sft.py \
+torchrun --nproc_per_node=1 sft.py \
     --model_name "Qwen/Qwen2.5-14B-Instruct" \
     --file_name "/home/ubuntu/AcquisitionSynthesis/training_data/Original_${DATASET}_qwen14bins.parquet"
 py merge.py --model_path "/dev/shm/sft_models/Original_${DATASET}_qwen14bins" --base_model "Qwen/Qwen2.5-14B-Instruct"

@@ -79,9 +79,11 @@ if __name__ == "__main__":
             "rouge_l_accuracy": exp['rouge_l_accuracy'],
             "judge_score": exp['judge_score'],
             "judge_score_accuracy": exp['judge_score_accuracy'],
-        }).to_csv(f"{exp_name}.csv", sep="|")
+        }).to_csv(f"result_files_07_11/{exp_name}.csv", sep="|")
 
 
         with open('results.txt', 'a+') as f:
             f.write(f"{exp_name}\tembed_sim={np.array(exp['embed_sim_accuracy']).mean()*100:.4f}\trouge_l={np.array(exp['rouge_l_accuracy']).mean()*100:.4f}\tjudge={np.array(exp['judge_score_accuracy']).mean()*100:.4f}\n")
+    with open('results.txt', 'a+') as f:
+        f.write("\n\n\n")
     ######## RECORDING EVALUATION ########

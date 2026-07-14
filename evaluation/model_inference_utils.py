@@ -1,4 +1,5 @@
 import os
+import sys
 import gc
 from vllm import LLM, SamplingParams
 from vllm.distributed.parallel_state import destroy_model_parallel, destroy_distributed_environment
@@ -12,17 +13,17 @@ from transformers import AutoTokenizer
 from rouge_score import rouge_scorer
 from glob import glob
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from prompts import get_prompt_template
+
 n = 500
 
-def perform_cheating(llm, sampling_params, dataset_name="/home/ubuntu/AcquisitionSynthesis/training_data/selected_nemotron_stem_5k.parquet", english_reasoning="off", only_questions=False):
+def perform_cheating(llm, sampling_params, dataset_name="/home/ubuntu/AcquisitionSynthesis/training_data/selected_nemotron_stem.parquet", english_reasoning="off", only_questions=False):
     grounding_seed = pd.read_parquet(dataset_name, engine='pyarrow')
     questions = list(grounding_seed['question'])[:n]
     answers = list(grounding_seed['answer'])[:n]
 
-    if english_reasoning == "on":
-        prompt_template = lambda q: f"Answer the following multiple choice question. Output your reasoning in ENGLISH in the <reasoning> </reasoning> tags, and your final answer (the letter of the answer choice) in <answer> \\boxed{{}} </answer> tags.\n\n<question> {q} </question>."
-    else:
-        prompt_template = lambda q: f"Answer the following multiple choice question. Output your reasoning in <reasoning> </reasoning> tags, and your final answer (the letter of the answer choice) in <answer> \\boxed{{}} </answer> tags.\n\n<question> {q} </question>."
+    prompt_template = get_prompt_template("stem", english_reasoning=(english_reasoning == "on"))
     prompts = [prompt_template(q) for q in questions]
     outputs = []
 
@@ -31,8 +32,9 @@ def perform_cheating(llm, sampling_params, dataset_name="/home/ubuntu/Acquisitio
         outputs = [output.outputs[0].text.strip() for output in outputs]
 
         outputs = [output.split("\\boxed{")[-1].split("}")[0].strip() for output in outputs]
+        outputs = [answer if answer in output[:4] else output for output, answer in zip(outputs, answers)]
     answers = [answer.split("\\boxed{")[-1].split("}")[0].strip() for answer in answers]
-    
+
     return [{
         "experiment_name": "cheating" if english_reasoning == "off" else "nemotron_stem_english_reasoning",
         "task": "classification",
@@ -46,19 +48,18 @@ def perform_nemotron_stem_inference(llm, sampling_params, dataset_name="/home/ub
     questions = list(grounding_seed.apply(lambda row: row['extra_info']['grounding_question'], axis=1))[:n]
     answers = list(grounding_seed.apply(lambda row: row['extra_info']['grounding_answer'], axis=1))[:n]
 
-    if english_reasoning == "on":
-        prompt_template = lambda q: f"Answer the following multiple choice question. Output your reasoning in ENGLISH in the <reasoning> </reasoning> tags, and your final answer (the letter of the answer choice) in <answer> \\boxed{{}} </answer> tags.\n\n<question> {q} </question>."
-    else:
-        prompt_template = lambda q: f"Answer the following multiple choice question. Output your reasoning in <reasoning> </reasoning> tags, and your final answer (the letter of the answer choice) in <answer> \\boxed{{}} </answer> tags.\n\n<question> {q} </question>."
+    prompt_template = get_prompt_template("stem", english_reasoning=(english_reasoning == "on"))
     prompts = [prompt_template(q) for q in questions]
     outputs = []
 
+    answers = [answer.split("\\boxed{")[-1].split("}")[0].strip() for answer in answers]
     if not only_questions:
         outputs = llm.generate(prompts, sampling_params=sampling_params)
         outputs = [output.outputs[0].text.strip() for output in outputs]
 
         outputs = [output.split("\\boxed{")[-1].split("}")[0].strip() for output in outputs]
-    answers = [answer.split("\\boxed{")[-1].split("}")[0].strip() for answer in answers]
+        outputs = [output[:1].upper() if len(output) > 2 and output[1] == ":" else output for output, answer in zip(outputs, answers)]
+    
     
     return [{
         "experiment_name": "nemotron_stem" if english_reasoning == "off" else "nemotron_stem_english_reasoning",
@@ -84,7 +85,7 @@ def perform_nemotron_math_inference(llm, sampling_params, dataset_name="/home/ub
         outputs = llm.generate(prompts[:n], sampling_params=sampling_params)
         outputs = [output.outputs[0].text.strip() for output in outputs]
 
-        outputs = [output.split("\\boxed{")[-1].split("}")[0].strip() for output in outputs]
+        outputs = [output.split("<answer>")[-1].split("</answer>")[0].strip()[7:-1] for output in outputs]
     answers = [answer.split("\\boxed{")[-1].split("}")[0].strip() for answer in answers]
     
     return [{
@@ -130,9 +131,9 @@ def perform_mhotpot_inference(llm, sampling_params, data_dir="/home/ubuntu/Acqui
         contexts = df['context']
 
         if english_reasoning == "on":
-            prompt_template = lambda c, q: f"Given some context, the task is the answer the question. Output your reasoning in ENGLISH in the<reasoning> </reasoning> tags, and your final answer in <answer> </answer> tags.\n\n<context> {c} </context>\n<question> {q} </question>."
+            prompt_template = lambda c, q: f"Given some context, the task is to answer the question. Output your reasoning in ENGLISH in <reasoning> </reasoning> tags, then give your final answer in <answer> </answer> tags. Keep the final answer short: 2-4 words only.\n\n<context> {c} </context>\n<question> {q} </question>."
         else:
-            prompt_template = lambda c, q: f"Given some context, the task is the answer the question. Output your reasoning in <reasoning> </reasoning> tags, and your final answer in <answer> </answer> tags.\n\n<context> {c} </context>\n<question> {q} </question>."
+            prompt_template = lambda c, q: f"Given some context, the task is to answer the question. Output your reasoning in <reasoning> </reasoning> tags, then give your final answer in <answer> </answer> tags. Keep the final answer short: 2-4 words only.\n\n<context> {c} </context>\n<question> {q} </question>."
         prompts = [prompt_template(c, q) for c, q in zip(contexts, queries)]
         outputs = []
 
@@ -141,7 +142,7 @@ def perform_mhotpot_inference(llm, sampling_params, data_dir="/home/ubuntu/Acqui
             outputs = [output.outputs[0].text.strip() for output in outputs]
         
             outputs = [output.split("<answer>")[-1].split("</answer>")[0].strip() for output in outputs]
-        questions = [f"Context: {c}\nQuestion: {q}" for c, q in zip(queries, contexts)]
+        questions = [f"Context: {c}\nQuestion: {q}" for c, q in zip(contexts, queries)]
 
         experiments.append({
             "experiment_name": f"mhotpot_{csv_file.split('/')[-1].split('.')[0]}" if english_reasoning == "off" else f"mhotpot_{csv_file.split('/')[-1].split('.')[0]}_english_reasoning",
@@ -161,11 +162,9 @@ def perform_mmmlu_inference(llm, sampling_params, data_dir="/home/ubuntu/Acquisi
     for csv_file in csv_files:
         df = pd.read_csv(csv_file)[:n]
         questions = df['questions']
+        answers = list(df['answers'])
 
-        if english_reasoning == "on":
-            prompt_template = lambda q: f"Answer the following multiple choice question. Output your reasoning in ENGLISH in the <reasoning> </reasoning> tags, and your final answer (the letter of the answer choice) in <answer> \\boxed{{}} </answer> tags.\n\n<question> {q} </question>."
-        else:
-            prompt_template = lambda q: f"Answer the following multiple choice question. Output your reasoning in <reasoning> </reasoning> tags, and your final answer (the letter of the answer choice) in <answer> \\boxed{{}} </answer> tags.\n\n<question> {q} </question>."
+        prompt_template = get_prompt_template("stem", english_reasoning=(english_reasoning == "on"))
         prompts = [prompt_template(q) for q in questions]
         outputs = []
 
@@ -174,12 +173,13 @@ def perform_mmmlu_inference(llm, sampling_params, data_dir="/home/ubuntu/Acquisi
             outputs = [output.outputs[0].text.strip() for output in outputs]
         
             outputs = [output.split("\\boxed{")[-1].split("}")[0].strip() for output in outputs]
+            outputs = [output[:1].upper() if len(output) > 2 and output[1] == ":" else output for output, answer in zip(outputs, answers)]
 
         experiments.append({
             "experiment_name": f"mmmlu_{csv_file.split('/')[-1].split('.')[0]}" if english_reasoning == "off" else f"mmmlu_{csv_file.split('/')[-1].split('.')[0]}_english_reasoning",
             "task": "classification",
             "questions": questions,
-            "answers": df['answers'],
+            "answers": answers,
             "outputs": outputs
         })
 

@@ -5,6 +5,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_path", type=str, required=True, help="Path to the fine-tuned adapter/model")
 parser.add_argument("--base_model", type=str, required=True, help="Path to the fine-tuned adapter/model")
+parser.add_argument("--skip_push", action="store_true", help="Skip pushing the merged model to the HF Hub")
 args = parser.parse_args()
 
 base_model_name = args.base_model
@@ -21,10 +22,11 @@ model.save_pretrained(merged_path)
 tokenizer.save_pretrained(merged_path)
 print(f"Merged model saved to {merged_path}")
 
-# Push to Hugging Face Hub
-model_name = args.model_path.split("/")[-1]
-hf_repo_id = f"ishikauniphore/student_{model_name}"
+if not args.skip_push:
+    # Push to Hugging Face Hub
+    model_name = args.model_path.split("/")[-1]
+    hf_repo_id = f"ishikauniphore/student_{model_name}"
 
-model.push_to_hub(hf_repo_id)
-tokenizer.push_to_hub(hf_repo_id)
-print(f"Model pushed to https://huggingface.co/{hf_repo_id}")
+    model.push_to_hub(hf_repo_id)
+    tokenizer.push_to_hub(hf_repo_id)
+    print(f"Model pushed to https://huggingface.co/{hf_repo_id}")

@@ -137,7 +137,7 @@ if __name__ == "__main__":
 
     TRAIN_SIZE = args.train_size
     TEST_SIZE = 1000
-    VALID_SIZE = 100
+    VALID_SIZE = 1000
     MAX_TOKENS = 4096
 
     # Use ~4 chars per token as a rough estimate to filter prompts
