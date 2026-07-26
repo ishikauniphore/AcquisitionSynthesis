@@ -102,41 +102,18 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 def clean_up():
-    global language_model, llm_sampling_params, embedding_model, cluster_centers_tensor, language_auto_model, language_tokenizer
-    if language_model is not None:
-        language_model.llm_engine.engine_core.shutdown()
-        destroy_model_parallel()
-        destroy_distributed_environment()
-        del language_model
-    if embedding_model is not None:
-        embedding_model.llm_engine.engine_core.shutdown()
-        destroy_model_parallel()
-        destroy_distributed_environment()
-        del embedding_model
-    if language_auto_model is not None:
-        del language_auto_model
-    if language_tokenizer is not None:
-        del language_tokenizer
-
-    # Stale TCPStore rendezvous vars from this run's destroyed distributed
-    # env would otherwise hang the next vLLM instance's spawned workers.
-    for key in ['MASTER_ADDR', 'MASTER_PORT', 'RANK', 'WORLD_SIZE', 'LOCAL_RANK', 'LOCAL_WORLD_SIZE']:
-        os.environ.pop(key, None)
-
-    language_model = None
-    llm_sampling_params = None
-    embedding_model = None
-    cluster_centers_tensor = None
-    language_tokenizer = None
+    global language_auto_model, language_tokenizer
     language_auto_model = None
+    language_tokenizer = None
     gc.collect()
     torch.cuda.empty_cache()
+    
 
 
 ############################################# START SERVICE #############################################
 @app.post("/start_service", response_model=ActivateResponse)
 def start_service(req: ActivateRequest):
-    # clean_up()
+    clean_up()
     global language_model, llm_sampling_params, embedding_model, language_auto_model, language_tokenizer
     
     if "confidence" in req.service or "answerdiff" in req.service:
@@ -166,7 +143,7 @@ def start_service(req: ActivateRequest):
     #     service_utils.init_diversity_worker(embedding_model, cluster_centers_tensor)
     #     return {"status": "ok", "service": req.service}
 
-    if "hlrep" in req.service:
+    if "hlrep" in req.service or "combined" in req.service:
         os.environ['CUDA_VISIBLE_DEVICES'] = '6'
         model_name = req.kwargs.get("model_name")
         language_auto_model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map="auto")
@@ -174,6 +151,9 @@ def start_service(req: ActivateRequest):
         language_tokenizer.pad_token_id = language_tokenizer.eos_token_id
         language_tokenizer.padding_size = "left"
         service_utils.init_hlrep_worker(language_tokenizer, language_auto_model)
+        service_utils.init_combined_worker(language_tokenizer, language_auto_model)
+        service_utils.init_combined_lai_worker(language_tokenizer, language_auto_model)
+        service_utils.init_combined_lsi_worker(language_tokenizer, language_auto_model)
         return {"status": "ok", "service": req.service}
 
     if "semreasoning" in req.service:
@@ -184,25 +164,6 @@ def start_service(req: ActivateRequest):
         os.environ['CUDA_VISIBLE_DEVICES'] = '7'
         embedding_model = LLM("Qwen/Qwen3-Embedding-0.6B", task="embed")
         service_utils.init_semreasoning_worker(language_model, llm_sampling_params, embedding_model)
-        return {"status": "ok", "service": req.service}
-
-    if "combined" in req.service:
-        if language_model is not None:
-            return {"status": "ok", "service": req.service}
-
-        # confidence (defaults to cuda:0, i.e. physical GPU 6 from CUDA_VISIBLE_DEVICES='6,7' at module load)
-        model_name = req.kwargs.get("model_name")
-        language_model = LLM(model_name, tensor_parallel_size=1, gpu_memory_utilization=0.9, trust_remote_code=True, max_model_len=4096)
-        llm_sampling_params = SamplingParams(temperature=0.7, logprobs=2, max_tokens=512)
-
-        # hlrep (pinned to cuda:1, i.e. physical GPU 7 — CUDA_VISIBLE_DEVICES can't be
-        # changed mid-process since vLLM above already initialized a CUDA context)
-        language_auto_model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map={"": "cuda:1"})
-        language_tokenizer = AutoTokenizer.from_pretrained(model_name)
-        language_tokenizer.pad_token_id = language_tokenizer.eos_token_id
-        language_tokenizer.padding_size = "left"
-
-        service_utils.init_combined_worker(language_model, llm_sampling_params, language_tokenizer, language_auto_model)
         return {"status": "ok", "service": req.service}
     
     if "format" in req.service:
@@ -229,6 +190,12 @@ def hlrep_rewards(req: RewardsRequest, x_api_key: str | None = Header(default=No
 @app.post("/combined", response_model=RewardsResponse)
 def combined_rewards(req: RewardsRequest, x_api_key: str | None = Header(default=None)):
     return service_utils.combined(req)
+@app.post("/combined_lai", response_model=RewardsResponse)
+def combined_lai_rewards(req: RewardsRequest, x_api_key: str | None = Header(default=None)):
+    return service_utils.combined_lai(req)
+@app.post("/combined_lsi", response_model=RewardsResponse)
+def combined_lsi_rewards(req: RewardsRequest, x_api_key: str | None = Header(default=None)):
+    return service_utils.combined_lsi(req)
 
 @app.post("/end_service", response_model=RewardsResponse)
 def end_service():

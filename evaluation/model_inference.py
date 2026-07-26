@@ -20,16 +20,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ######## LLM INFERENCE ########
-    llm = LLM(args.model_name, tensor_parallel_size=torch.cuda.device_count(), gpu_memory_utilization=0.7, trust_remote_code=True, enforce_eager=True, max_model_len=8096)
+    llm = LLM(args.model_name, tensor_parallel_size=torch.cuda.device_count(), gpu_memory_utilization=0.8, trust_remote_code=True, enforce_eager=True, max_model_len=8096)
     sampling_params = SamplingParams(temperature=0.2, max_tokens=2048)
     experiments = []
-    # experiments.extend(perform_mhotpot_inference(llm, sampling_params, english_reasoning=args.english_reasoning))
-    experiments.extend(perform_cheating(llm, sampling_params, english_reasoning=args.english_reasoning))
+    experiments.extend(perform_nemotron_stem_inference(llm, sampling_params, english_reasoning=args.english_reasoning))
     experiments.extend(perform_nemotron_math_inference(llm, sampling_params, english_reasoning=args.english_reasoning))
     experiments.extend(perform_nemotron_chat_inference(llm, sampling_params, english_reasoning=args.english_reasoning))
-    experiments.extend(perform_nemotron_stem_inference(llm, sampling_params, english_reasoning=args.english_reasoning))
-    # experiments.extend(perform_opus_inference(llm, sampling_params))
-    # experiments.extend(perform_mmmlu_inference(llm, sampling_params, english_reasoning=args.english_reasoning))
+    experiments.extend(perform_opus_inference(llm, sampling_params))
+    experiments.extend(perform_mmmlu_inference(llm, sampling_params, english_reasoning=args.english_reasoning))
+    experiments.extend(perform_mhotpot_inference(llm, sampling_params, english_reasoning=args.english_reasoning))
 
     with open(f"eval_{args.model_name.split('/')[-1]}.pkl", 'wb+') as f:
         pickle.dump(experiments, f)

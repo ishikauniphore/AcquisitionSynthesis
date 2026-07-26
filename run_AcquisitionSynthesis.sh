@@ -1,14 +1,7 @@
 export VLLM_USE_V1=0
-DATASET="nemotron_stem"
-MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
-MODEL_SHORTHAND="qwen7bins"
-
-
-####
-####
-#### NOTE: NEED TO RUN QWEN14BINS WITH SEMREAONING AGAIN
-####
-####
+DATASET="nemotron"
+MODEL_NAME="Qwen/Qwen2.5-14B-Instruct"
+MODEL_SHORTHAND="NEWqwen14bins"
 
 
 ### STEP 1: Acquisition training
@@ -20,13 +13,13 @@ notify "${MODEL_SHORTHAND}_${DATASET}_${REWARD} model is trained"
 
 
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-# # STEP 2: Dataset generations
+# STEP 2: Dataset generations
 py generating_data/data_gen_cluster.py \
     --dataset_name "${DATASET}" \
     --acquisition_model_name "${HF_USERNAME}/generator_${MODEL_SHORTHAND}_${DATASET}_${REWARD}" \
     --answer_model_name "Qwen/Qwen2.5-32B-Instruct" \
     --output_file "/home/ubuntu/AcquisitionSynthesis/training_data/${MODEL_SHORTHAND}_${DATASET}_${REWARD}.parquet" \
-    --size 1000 --k 4
+    --size 5000 --k 4
 
 # # ### STEP 3: Student evaluation
 cd evaluation

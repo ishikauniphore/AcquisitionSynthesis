@@ -11,7 +11,6 @@ import evaluate
 import re
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from prompts import canonicalize_answer
 
 def evaluate_student(predictions, references):
     rouge_metric = evaluate.load('rouge')
@@ -36,7 +35,8 @@ def evaluation(model, dataset):
         prompts = [f"## User: {p}\n## Assistant: " for p in list(dataset['question'])]
         languages = list(dataset['language'])
         outputs = student_model.generate(prompts, sampling_params=sampling_params)
-        outputs = [o.outputs[0].text.strip().replace("\n", " ") for o in outputs]
+        outputs = [o.outputs[0].text.strip().replace("\n", " ")[:4096*2] for o in outputs]
+
         prompts = [p.strip().replace("\n", " ") for p in prompts]
 
         pd.DataFrame.from_dict({
@@ -82,7 +82,7 @@ def parse_html(generated_samples, dataset_name):
             synthetic_data.append({
                 "question": match.group(1).strip(),
                 "reasoning": match.group(2).strip(),
-                "answer": canonicalize_answer(match.group(3).strip(), dataset_name)
+                "answer": match.group(3).strip()
             })
         except:
             continue
@@ -90,8 +90,12 @@ def parse_html(generated_samples, dataset_name):
     return synthetic_data
 
 def data_gen_engine(mistakes: pd.DataFrame, teacher_name, num_samples, dataset_name):
-    teacher_model = LLM(teacher_name, tensor_parallel_size=torch.cuda.device_count(), gpu_memory_utilization=0.8, trust_remote_code=True)
-    sampling_params = SamplingParams(temperature=0.6, max_tokens=300)
+    teacher_model = LLM(teacher_name, tensor_parallel_size=torch.cuda.device_count(), gpu_memory_utilization=0.85,
+        disable_custom_all_reduce=True,
+        max_model_len=8194,
+        max_num_seqs=64,
+        enforce_eager=True, trust_remote_code=True)
+    sampling_params = SamplingParams(temperature=0.7, max_tokens=4096)
 
     # Match the answer format the student is actually trained/scored on
     # (evaluation/sft.py, prompts.py) - otherwise the teacher answers however
@@ -106,26 +110,14 @@ def data_gen_engine(mistakes: pd.DataFrame, teacher_name, num_samples, dataset_n
     else:
         answer_instruction = lambda lang: f"Output the final answer in {lang} plain text."
 
-    prompt = lambda row: f"""You are a experienced machine learning engineer and your role is create training data for a model. We will focus on improving skills related to the following mistake made by a student:
+    prompt = lambda row: f"""You create ML training data. Given this student mistake:
 {format_conversation(row)}
+Identify the student's weak skill, then write a training sample in {row['language']} targeting it. Use these tags:
 
-You have two tasks. First, identify the particular skill that the student is weak in. Second, generate a training sample IN {row['language']} that targets the skill for the student to learn. Format your answer in the below tags:
-
-<weak_skill>
-Output the particular skill that the student is weak in, given the conversation.
-</weak_skill>
-
-<question>
-Output the question in {row['language']} of the generated target sample that will help the student improve.
-</question>
-
-<reasoning>
-Output the reasoning in {row['language']} behind the solution to the generated question.
-</reasoning>
-
-<answer>
-{answer_instruction(row['language'])}
-</answer>
+<weak_skill> Student's weakness. </weak_skill>
+<question> Question in {row['language']}. </question>
+<reasoning> Reasoning in {row['language']}. </reasoning>
+<answer> {answer_instruction(row['language'])} </answer>
 """
 
     generated_dataset = []
@@ -153,14 +145,14 @@ Output the reasoning in {row['language']} behind the solution to the generated q
 
 if __name__ == "__main__":
     argparser = ArgumentParser()
-    argparser.add_argument("--data", type=str, default="numina")
+    argparser.add_argument("--data", type=str, default="nemotron")
     argparser.add_argument("--student_model", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    argparser.add_argument("--teacher_model", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
+    argparser.add_argument("--teacher_model", type=str, default="Qwen/Qwen2.5-32B-Instruct")
     argparser.add_argument("--output_file", type=str, default="dataenv_dataset.parquet")
-    argparser.add_argument("--size", type=int, default=1000)
+    argparser.add_argument("--size", type=int, default=5000)
     args = argparser.parse_args()
 
-    dataset = load_data(f"/home/ubuntu/AcquisitionSynthesis/data/{args.data}/valid.parquet")
+    dataset = load_data(f"/home/ubuntu/AcquisitionSynthesis/data/{args.data}/train.parquet")
     # dataset = dataset[:100]
     CACHE_FILE = 'dataenvgym_cache.csv'
 

@@ -52,10 +52,11 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 python3 -m verl.trainer.main_ppo \
     trainer.n_gpus_per_node=$NUM_GPU \
     trainer.nnodes=1 \
     trainer.save_freq=20 \
-    trainer.test_freq=20 \
+    trainer.test_freq=-1 \
     trainer.total_epochs=1 \
     trainer.default_local_dir=/dev/shm/grpo_synthesis_models/$JOB_NAME \
     trainer.max_actor_ckpt_to_keep=1 \
+    trainer.val_before_train=False \
     custom_reward_function.path=$REWARD_PATH \
     custom_reward_function.name=compute_score
 

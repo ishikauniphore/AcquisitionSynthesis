@@ -1,12 +1,12 @@
 import pandas as pd
 
-datasets = ['alpaca', 'openr1math']
+datasets = ['nemotron_chat', 'nemotron_stem', 'nemotron_math']
 
-for split in ['train', 'valid', 'test']:
+for split in ['train']:
     ds = []
     for dataset in datasets:
         temp = pd.read_parquet(f"{dataset}/{split}.parquet", engine='pyarrow')
-        ds.append(temp[:len(temp)//2])
+        ds.append(temp[:167])
     
     df = pd.concat(ds)
-    df.to_parquet(f'combined_alpaca_openr1math/{split}.parquet')
+    df.to_parquet(f'nemotron/{split}.parquet')

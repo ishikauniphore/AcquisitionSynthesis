@@ -15,19 +15,11 @@ def get_prompt_template(data_name, multilingual=False, english_reasoning=False):
         return lambda q: f"Answer the following question.{lang_clause} {reasoning_clause}, and your final answer in <answer> \\boxed{{}} </answer> tags.\n\n<question> {q} </question>."
     elif "chat" in data_name:
         return lambda q: f"Answer the following question.{lang_clause} {reasoning_clause}, and your final answer in <answer> </answer> tags.\n\n<question> {q} </question>."
+    elif "nemotron" in data_name:
+        # nemotron mixes stem/math/chat questions under one data_name, so the
+        # MCQ instruction has to be unconditional (it's a no-op for non-MCQ
+        # questions) since we can't tell the sub-type per example.
+        mcq_clause = " If the question is multiple choice, put only the letter of the correct answer choice in the box."
+        return lambda q: f"Answer the following question.{lang_clause} {reasoning_clause}, and your final answer in <answer> \\boxed{{}} </answer> tags.{mcq_clause}\n\n<question> {q} </question>."
     else:
         raise ValueError(f"Unknown data name: {data_name}")
-
-
-def canonicalize_answer(answer_text, data_name):
-    """Reduce a raw <answer> block to the same canonical form eval uses when
-    scoring model predictions (see the boxed/letter extraction in
-    evaluation/model_inference_utils.py), so labels produced at generation
-    time and predictions scored at eval time are directly comparable.
-    """
-    text = answer_text.strip()
-    if "\\boxed{" in text:
-        text = text.split("\\boxed{")[-1].split("}")[0].strip()
-    if "stem" in data_name and len(text) > 1 and text[0].isalpha() and text[1] in ":).":
-        text = text[0].upper()
-    return text

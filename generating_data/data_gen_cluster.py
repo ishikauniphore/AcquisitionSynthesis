@@ -19,7 +19,7 @@ from sklearn.metrics import silhouette_score
 from sklearn.metrics.pairwise import cosine_similarity
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from prompts import get_prompt_template, canonicalize_answer
+from prompts import get_prompt_template
 
 LANGUAGE_SET = ['English', 'French', 'Spanish', 'Arabic', 'Portuguese', 'Italian']
 def parse_reasoning(text):
@@ -63,9 +63,10 @@ def parse_html(generated_samples, synthetic_data, questions):
             match = sample_pattern.search(text)
             if not match:
                 continue
-            
-            synthetic_data.append({"question": match.group(1).strip()})
-            questions.append(match.group(1).strip())
+            q = match.group(1).strip()
+            if len(q) >= 2 * 4096: continue
+            synthetic_data.append({"question": q})
+            questions.append(q)
         except:
             continue
     
@@ -79,7 +80,7 @@ def generate_questions(model_name, dataset_name, size):
     synthetic_data = []
     questions = []
 
-    model = LLM(model_name, tensor_parallel_size=torch.cuda.device_count(), gpu_memory_utilization=0.7, max_model_len=4096)
+    model = LLM(model_name, tensor_parallel_size=torch.cuda.device_count(), gpu_memory_utilization=0.7, max_model_len=5096)
     sampling_params = SamplingParams(temperature=0.8, max_tokens=2048)
 
     while len(synthetic_data) < size:
@@ -130,8 +131,10 @@ def generate_k_responses(
     llm = LLM(
         model=model_name,
         tensor_parallel_size=torch.cuda.device_count(),
-        gpu_memory_utilization=0.7,
+        gpu_memory_utilization=0.85,
         disable_custom_all_reduce=True,
+        max_model_len=4096,
+        enforce_eager=True,
     )
     sp = SamplingParams(n=k, temperature=temperature, max_tokens=max_tokens, seed=seed)
 
@@ -183,10 +186,7 @@ def cluster_and_pick(
     for q in tqdm(questions, desc="  [cluster]"):
         all_generations = q.pop("generations")
         full_answers = [g for g in all_generations if parse_reasoning(g) is not None] or all_generations
-        # Canonicalize before clustering: without this, "A", "A)", and "A."
-        # from different generations count as distinct answers, splitting
-        # what should be one majority-vote cluster into several.
-        texts = [canonicalize_answer(parse_answer(t), dataset_name) for t in full_answers]
+        texts = [parse_answer(t) for t in full_answers]
         k = len(texts)
 
         if len(set(texts)) == 1:
