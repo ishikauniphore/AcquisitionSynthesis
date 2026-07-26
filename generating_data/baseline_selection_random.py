@@ -15,7 +15,7 @@ if __name__ == "__main__":
     argparser.add_argument("--file", type=str, default="selection.parquet")
     args = argparser.parse_args()
 
-    train_data = load_data(f"/home/ubuntu/AcquisitionSynthesis/data/{args.data}/train.parquet")
+    train_data = load_data(f"/home/ubuntu/AcquisitionSynthesis/data/{args.data}/valid.parquet")
 
     filtered = filter(train_data, args.size)
 

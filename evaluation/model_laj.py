@@ -79,7 +79,7 @@ if __name__ == "__main__":
             "rouge_l_accuracy": exp['rouge_l_accuracy'],
             "judge_score": exp['judge_score'],
             "judge_score_accuracy": exp['judge_score_accuracy'],
-        }).to_csv(f"result_files_07_11/{exp_name}.csv", sep="|")
+        }).to_csv(f"result_files/{exp_name}.csv", sep="|")
 
 
         with open('results.txt', 'a+') as f:

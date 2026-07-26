@@ -1,4 +1,4 @@
-MODEL_NAMES=("Qwen/Qwen2.5-7B-Instruct" "Qwen/Qwen2.5-14B-Instruct" "meta-llama/Llama-3.1-8B-Instruct" "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")
+MODEL_NAMES=("Qwen/Qwen2.5-14B-Instruct")
 
 cd evaluation
 for MODEL_NAME in "${MODEL_NAMES[@]}"; do

@@ -3,11 +3,11 @@ sys.path.append('/home/ubuntu/AcquisitionSynthesis')
 from argparse import ArgumentParser
 import os
 from config import *
-from rewards.confidence import compute_confidence_batch
-from rewards.proximity import compute_proximity
-from rewards.gradient import compute_gradient
-from rewards.diversity import compute_diversity
-from rewards.answer_variance import compute_answer_variance_batch
+# from rewards.confidence import compute_confidence_batch
+from rewards.combined_batch import compute_combined_batch
+# from rewards.gradient import compute_gradient
+# from rewards.diversity import compute_diversity
+# from rewards.answer_variance import compute_answer_variance_batch
 import requests
 from tqdm import tqdm
 import pickle
@@ -18,50 +18,21 @@ def normalize(nums):
     return nums
 
 
-def filter(train_data: pd.DataFrame, size, dataset_name, dir_name):
-    acquisition_funcs = [compute_gradient] #[compute_proximity, compute_diversity]
-    acquisition_names = ['gradient'] #['proximity', 'gradient', 'diversity']
+def filter(train_data: pd.DataFrame, size, model_name, dataset_name, dir_name):
     acquisition_rewards = []
+    if not os.path.exists(f'filtering_metadata/{dir_name}/combined.pkl'):
+        data = []
+        for i in tqdm(range(len(train_data))):
+            data.append(train_data.iloc[i]['question'])
 
-    for j in range(len(acquisition_funcs)):
-        acquisition_rewards.append([])
-        if not os.path.exists(f'filtering_metadata/{dir_name}/{acquisition_names[j]}.pkl'):
-            requests.post(
-                url="http://127.0.0.1:5145/start_service",
-                json={"service": acquisition_names[j], "kwargs": {"model_name": "meta-llama/Llama-3.1-8B-Instruct", "dataset_name": dataset_name}}
-            )
-
-            for i in tqdm(range(len(train_data)), desc=acquisition_names[j]):
-                data = {
-                    "question": train_data.iloc[i]['question'],
-                    "answer": train_data.iloc[i]['answer']
-                }
-
-                acquisition_rewards[-1].append(acquisition_funcs[j](data))
-            with open(f'filtering_metadata/{dir_name}/{acquisition_names[j]}.pkl', 'wb+') as f:
-                pickle.dump(acquisition_rewards[-1], f)
-        else:
-            with open(f'filtering_metadata/{dir_name}/{acquisition_names[j]}.pkl', 'rb') as f:
-                acquisition_rewards[-1] =  pickle.load(f)
-
-    
-    acquisition_funcs = [compute_confidence_batch, compute_answer_variance_batch]
-    acquisition_names = ['confidence', 'answer_variance']
-    for j in range(len(acquisition_funcs)):
-        if not os.path.exists(f'filtering_metadata/{dir_name}/{acquisition_names[j]}.pkl'):
-            data = []
-            for i in tqdm(range(len(train_data)), desc=acquisition_names[j]):
-                data.append(train_data.iloc[i]['question'])
-
-            acquisition_rewards.append(acquisition_funcs[j](data, {"model_name": "meta-llama/Llama-3.1-8B-Instruct", "dataset_name": dataset_name}))
-            with open(f'filtering_metadata/{dir_name}/{acquisition_names[j]}.pkl', 'wb+') as f:
-                pickle.dump(acquisition_rewards[-1], f)
+        acquisition_rewards.append(compute_combined_batch(data, model_name))
+        with open(f'filtering_metadata/{dir_name}/combined.pkl', 'wb+') as f:
+            pickle.dump(acquisition_rewards[-1], f)
     
     rankings = np.zeros((len(train_data)))
     for j in range(len(acquisition_rewards)):
         rankings += normalize(acquisition_rewards[j])
     
-    rankings /= len(acquisition_funcs)
     train_data['rank'] = rankings
     train_data = train_data.sort_values('rank', ascending=False)
     return train_data[:size]
@@ -69,15 +40,15 @@ def filter(train_data: pd.DataFrame, size, dataset_name, dir_name):
 
 if __name__ == "__main__":
     argparser = ArgumentParser()
-    argparser.add_argument("--data", type=str, default="numina")
+    argparser.add_argument("--data", type=str, default="nemotron")
     argparser.add_argument("--model", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    argparser.add_argument("--dir_name", type=str, default="qwen_metamath")
+    argparser.add_argument("--dir_name", type=str, default="llama8b_nemotron")
     argparser.add_argument("--output_file", type=str, default="filtered.parquet")
-    argparser.add_argument("--size", type=int, default=1000)
+    argparser.add_argument("--size", type=int, default=5000)
     args = argparser.parse_args()
 
-    train_data = load_data(f"/home/ubuntu/AcquisitionSynthesis/data/{args.data}/all.parquet")
-    filtered = filter(train_data, args.size, f"/home/ubuntu/AcquisitionSynthesis/data/{args.data}/train.parquet", args.dir_name)
+    train_data = load_data(f"/home/ubuntu/AcquisitionSynthesis/data/{args.data}/valid.parquet")
+    filtered = filter(train_data, args.size, args.model, f"/home/ubuntu/AcquisitionSynthesis/data/{args.data}/valid.parquet", args.dir_name)
 
     def format(col):
         filtered[col] = filtered[col].apply(lambda x: x.replace("\n", ""))

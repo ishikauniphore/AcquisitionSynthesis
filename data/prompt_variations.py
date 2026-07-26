@@ -89,7 +89,6 @@ Requirements for your generated task:
 - Draws from: open-ended knowledge tasks (Alpaca-style), conversational requests (LMArena-style), or format-constrained tasks (IFEval-style)
 - Instruction is self-contained and unambiguous
 - Reasoning walks through how each constraint is satisfied, step by step
-- IMPORTANT: Reasoning steps rotate through languages in this exact order: English, Spanish, French, Portuguese, Italian, Arabic — one language per step, cycling back if there are more steps than languages
 - Answer is a complete response that fully obeys every constraint in the instruction
 
 IMPORTANT: generate a (question, answer) pair; wrap your question and answer in the following special tokens:

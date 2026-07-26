@@ -71,7 +71,7 @@ def sft_train(file_name, model_name, num_epochs=5, output_dir="/dev/shm/sft_mode
         bf16=True,
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
-        optim="paged_adamw_8bit",
+        optim="adamw_8bit",
         report_to="none",
     )
 

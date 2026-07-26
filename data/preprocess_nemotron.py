@@ -39,9 +39,9 @@ if __name__ == "__main__":
     parser.add_argument("--hdfs_dir", default=None)
     parser.add_argument("--local_dataset_path", default=None, help="The local path to the raw dataset, if it exists.")
     parser.add_argument(
-        "--local_save_dir", default="/home/ubuntu/AcquisitionSynthesis/data/nemotron_stem/", help="The save directory for the preprocessed dataset."
+        "--local_save_dir", default="/home/ubuntu/AcquisitionSynthesis/data/nemotron_chat/", help="The save directory for the preprocessed dataset."
     )
-    parser.add_argument("--train_size", type=int, default=20000)
+    parser.add_argument("--train_size", type=int, default=500)
     parser.add_argument("--prompt", type=str, default="current")
 
     args = parser.parse_args()
@@ -135,9 +135,9 @@ if __name__ == "__main__":
         return records
 
 
-    TRAIN_SIZE = args.train_size
+    TRAIN_SIZE = 10000
     TEST_SIZE = 1000
-    VALID_SIZE = 1000
+    VALID_SIZE = 10000
     MAX_TOKENS = 4096
 
     # Use ~4 chars per token as a rough estimate to filter prompts
@@ -168,6 +168,7 @@ if __name__ == "__main__":
         local_save_dir = args.local_save_dir
 
     train_dataset.to_parquet(os.path.join(local_save_dir, "train.parquet"))
+    train_dataset.select(range(0, args.train_size)).to_parquet(os.path.join(local_save_dir, "all_train.parquet"))
     valid_dataset.to_parquet(os.path.join(local_save_dir, "valid.parquet"))
     test_dataset.to_parquet(os.path.join(local_save_dir, "test.parquet"))
     # all_dataset.to_parquet(os.path.join(local_save_dir, "all.parquet"))

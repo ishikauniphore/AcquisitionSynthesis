@@ -4,6 +4,7 @@ from format import parse
 import requests
 import torch
 import os
+from transformers import AutoTokenizer, AutoModelForCausalLM
 SERVER_IP = os.environ['SERVER_IP']
 
 def compute_combined(data):
@@ -26,7 +27,7 @@ def compute_combined(data):
     r.raise_for_status()
 
     if r.json()["acquisition_reward"] is not None:
-        combined_reward = min(max(r.json()["acquisition_reward"], 0.0), 1.0)
+        combined_reward = r.json()["acquisition_reward"]
     else:
         return float(0.0)
     return combined_reward
